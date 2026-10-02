@@ -12,8 +12,8 @@ rust-version = "1.85.0"
 keywords = ["youki", "container", "cgroups"]
 
 [features]
-default = ["systemd", "v2", "v1", "libseccomp"]
-libseccomp = ["dep:libseccomp"]
+default = ["systemd", "v2", "v1", "seccomp"]
+seccomp = ["dep:libseccomp"]
 systemd = ["libcgroups/systemd", "v2"]
 v2 = ["libcgroups/v2"]
 v1 = ["libcgroups/v1"]

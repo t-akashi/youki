@@ -33,7 +33,7 @@ pub enum ProcessError {
     #[error("failed to create intermediate process")]
     IntermediateProcessFailed(#[source] fork::CloneError),
     #[error("failed seccomp listener")]
-    #[cfg(feature = "libseccomp")]
+    #[cfg(feature = "seccomp")]
     SeccompListener(#[from] crate::process::seccomp_listener::SeccompListenerError),
     #[error("failed setup network device")]
     Network(#[from] crate::network::NetworkError),
@@ -197,7 +197,7 @@ pub fn container_main_process(container_args: &ContainerArgs) -> Result<(Pid, Op
                 handle_setup_network_device(linux, init_pid, &mut init_sender)?;
             }
             InitRequest::Seccomp => {
-                #[cfg(feature = "libseccomp")]
+                #[cfg(feature = "seccomp")]
                 {
                     let seccomp = container_args
                         .spec
@@ -217,7 +217,7 @@ pub fn container_main_process(container_args: &ContainerArgs) -> Result<(Pid, Op
                         &mut init_sender,
                     )?;
                 }
-                #[cfg(not(feature = "libseccomp"))]
+                #[cfg(not(feature = "seccomp"))]
                 let _ = fd;
             }
         }
@@ -349,13 +349,13 @@ impl InitRequestSequence {
                 .as_ref()
                 .is_some_and(|devices| !devices.is_empty())
         });
-        #[cfg(feature = "libseccomp")]
+        #[cfg(feature = "seccomp")]
         let seccomp = spec
             .linux()
             .as_ref()
             .and_then(|linux| linux.seccomp().as_ref())
             .is_some_and(crate::seccomp::is_notify);
-        #[cfg(not(feature = "libseccomp"))]
+        #[cfg(not(feature = "seccomp"))]
         let seccomp = false;
 
         Self::from_requirements(hooks, network_device, seccomp)
@@ -440,7 +440,7 @@ fn handle_hook_request(
     Ok(())
 }
 
-#[cfg(feature = "libseccomp")]
+#[cfg(feature = "seccomp")]
 fn handle_seccomp_notify(
     container: Option<&Container>,
     container_type: ContainerType,

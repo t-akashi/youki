@@ -323,8 +323,8 @@ mod test {
         Ok(())
     }
 
-    // This test depends on libseccomp to work.
-    #[cfg(feature = "libseccomp")]
+    // This test depends on a seccomp backend to work.
+    #[cfg(feature = "seccomp")]
     #[test]
     fn test_clone_fallback() -> Result<()> {
         use oci_spec::runtime::{
