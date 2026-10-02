@@ -32,13 +32,13 @@ use crate::process::args::{ContainerArgs, ContainerType};
 use crate::process::{channel, memory_policy};
 use crate::rootfs::RootFS;
 use crate::rootfs::device::{open_device_fd, verify_dev_null};
-#[cfg(feature = "libseccomp")]
+#[cfg(feature = "seccomp")]
 use crate::seccomp;
 use crate::syscall::{Syscall, SyscallError};
 use crate::user_ns::UserNamespaceConfig;
 use crate::{apparmor, capabilities, hooks, tty, utils};
 
-// Some variables are unused in the case where libseccomp feature is not enabled.
+// Some variables are unused in the case where seccomp feature is not enabled.
 #[allow(unused_variables)]
 pub fn container_init_process(
     args: &ContainerArgs,
@@ -364,7 +364,7 @@ pub fn container_init_process(
     // Without no new privileges, seccomp is a privileged operation. We have to
     // do this before dropping capabilities. Otherwise, we should do it later,
     // as close to exec as possible.
-    #[cfg(feature = "libseccomp")]
+    #[cfg(feature = "seccomp")]
     if let Some(seccomp) = ctx.linux.seccomp() {
         if ctx.process.no_new_privileges().is_none() {
             let notify_fd = seccomp::initialize_seccomp(seccomp).map_err(|err| {
@@ -377,7 +377,7 @@ pub fn container_init_process(
             })?;
         }
     }
-    #[cfg(not(feature = "libseccomp"))]
+    #[cfg(not(feature = "seccomp"))]
     if ctx.process.no_new_privileges().is_none() {
         tracing::warn!("seccomp not available, unable to enforce no_new_privileges!")
     }
@@ -411,7 +411,7 @@ pub fn container_init_process(
     // Initialize seccomp profile right before we are ready to execute the
     // payload so as few syscalls will happen between here and payload exec. The
     // notify socket will still need network related syscalls.
-    #[cfg(feature = "libseccomp")]
+    #[cfg(feature = "seccomp")]
     if let Some(seccomp) = ctx.linux.seccomp() {
         if ctx.process.no_new_privileges().is_some() {
             let notify_fd = seccomp::initialize_seccomp(seccomp).map_err(|err| {
@@ -424,7 +424,7 @@ pub fn container_init_process(
             })?;
         }
     }
-    #[cfg(not(feature = "libseccomp"))]
+    #[cfg(not(feature = "seccomp"))]
     if ctx.process.no_new_privileges().is_some() {
         tracing::warn!("seccomp not available, unable to set seccomp privileges!")
     }
@@ -958,7 +958,7 @@ fn setup_scheduler(sc_op: &Option<Scheduler>) -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "libseccomp")]
+#[cfg(feature = "seccomp")]
 fn sync_seccomp(
     fd: Option<i32>,
     main_sender: &mut channel::MainSender,
@@ -1087,11 +1087,11 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use anyhow::Result;
-    #[cfg(feature = "libseccomp")]
+    #[cfg(feature = "seccomp")]
     use nix::unistd;
     use nix::unistd::{Uid, User as NixUser};
     use oci_spec::runtime::{LinuxNamespaceBuilder, SpecBuilder, UserBuilder};
-    #[cfg(feature = "libseccomp")]
+    #[cfg(feature = "seccomp")]
     use serial_test::serial;
 
     use super::*;
@@ -1243,7 +1243,7 @@ mod tests {
 
     #[test]
     #[serial]
-    #[cfg(feature = "libseccomp")]
+    #[cfg(feature = "seccomp")]
     fn test_sync_seccomp() -> Result<()> {
         use std::os::unix::io::IntoRawFd;
         use std::thread;

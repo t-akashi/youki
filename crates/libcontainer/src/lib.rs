@@ -10,7 +10,7 @@ pub mod network;
 pub mod notify_socket;
 pub mod process;
 pub mod rootfs;
-#[cfg(feature = "libseccomp")]
+#[cfg(feature = "seccomp")]
 pub mod seccomp;
 pub mod signal;
 pub mod syscall;
