@@ -43,7 +43,9 @@ pub fn print_youki() {
         "rustc: {}",
         option_env!("VERGEN_RUSTC_SEMVER").unwrap_or("unknown")
     );
-    #[cfg(feature = "seccomp")]
+    #[cfg(feature = "seccomp-rs")]
+    println!("seccomp: builtin (seccomp-rs)");
+    #[cfg(all(feature = "seccomp", not(feature = "seccomp-rs")))]
     println!(
         "libseccomp: {}",
         option_env!("LIBSECCOMP_VERSION").unwrap_or("unknown")
