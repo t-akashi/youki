@@ -14,5 +14,8 @@ mod context;
 pub mod error;
 mod types;
 
+#[cfg(all(test, feature = "libseccomp"))]
+mod difftest;
+
 pub use context::ScmpFilterContext;
 pub use types::{ScmpAction, ScmpArch, ScmpArgCompare, ScmpCompareOp, ScmpSyscall};
