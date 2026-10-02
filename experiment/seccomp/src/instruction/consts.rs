@@ -57,6 +57,8 @@ pub const SECCOMP_RET_USER_NOTIF: u32 = 0x7fc00000;
 // See /usr/include/linux/audit.h .
 pub const AUDIT_ARCH_X86_64: u32 = 62 | 0x8000_0000 | 0x4000_0000;
 pub const AUDIT_ARCH_AARCH64: u32 = 183 | 0x8000_0000 | 0x4000_0000;
+pub const AUDIT_ARCH_I386: u32 = 3 | 0x4000_0000;
+pub const AUDIT_ARCH_ARM: u32 = 40 | 0x4000_0000;
 
 // See /arch/x86/include/uapi/asm/unistd.h
 pub const X32_SYSCALL_BIT: u32 = 0x4000_0000;
