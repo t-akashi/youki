@@ -38,6 +38,7 @@
     - [libcontainer](./developer/libcontainer.md)
     - [liboci-cli](./developer/liboci_cli.md)
     - [libseccomp](./developer/libseccomp.md)
+    - [seccomp-rs (experimental)](./developer/seccomp_rs.md)
     - [youki](./developer/youki.md)
   - [e2e tests](./developer/e2e/e2e_tests.md)
       - [rust oci tests](./developer/e2e/rust_oci_test.md)
