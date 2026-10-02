@@ -2,7 +2,16 @@ use std::collections::HashSet;
 use std::num::TryFromIntError;
 use std::os::unix::io;
 
-use libseccomp::{
+#[cfg(feature = "seccomp-rs")]
+mod scmp;
+
+// The pure Rust backend takes precedence if both backends are enabled.
+#[cfg(not(feature = "seccomp-rs"))]
+use libseccomp as backend;
+#[cfg(feature = "seccomp-rs")]
+use scmp as backend;
+
+use backend::{
     ScmpAction, ScmpArch, ScmpArgCompare, ScmpCompareOp, ScmpFilterContext, ScmpSyscall,
 };
 use oci_spec::runtime::{
@@ -19,34 +28,34 @@ pub enum SeccompError {
     NotifyWriteSyscall,
     #[error("failed to add arch to seccomp")]
     AddArch {
-        source: libseccomp::error::SeccompError,
+        source: backend::error::SeccompError,
         arch: Arch,
     },
     #[error("failed to load seccomp context")]
     LoadContext {
-        source: libseccomp::error::SeccompError,
+        source: backend::error::SeccompError,
     },
     #[error("failed to get seccomp notify id")]
     GetNotifyId {
-        source: libseccomp::error::SeccompError,
+        source: backend::error::SeccompError,
     },
     #[error("failed to add rule to seccomp")]
     AddRule {
-        source: libseccomp::error::SeccompError,
+        source: backend::error::SeccompError,
     },
     #[error("failed to create new seccomp filter")]
     NewFilter {
-        source: libseccomp::error::SeccompError,
+        source: backend::error::SeccompError,
         default: LinuxSeccompAction,
     },
     #[error("failed to set filter flag")]
     SetFilterFlag {
-        source: libseccomp::error::SeccompError,
+        source: backend::error::SeccompError,
         flag: LinuxSeccompFilterFlag,
     },
     #[error("failed to set SCMP_FLTATR_CTL_NNP")]
     SetCtlNnp {
-        source: libseccomp::error::SeccompError,
+        source: backend::error::SeccompError,
     },
 }
 

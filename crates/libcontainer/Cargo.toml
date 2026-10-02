@@ -16,6 +16,8 @@ default = ["systemd", "v2", "v1", "libseccomp"]
 # Internal umbrella feature enabled by any seccomp backend.
 seccomp = []
 libseccomp = ["dep:libseccomp", "seccomp"]
+# Pure Rust seccomp backend. Takes precedence over libseccomp if both are enabled.
+seccomp-rs = ["dep:youki-seccomp", "dep:syscalls", "seccomp"]
 systemd = ["libcgroups/systemd", "v2"]
 v2 = ["libcgroups/v2"]
 v1 = ["libcgroups/v1"]
@@ -32,6 +34,8 @@ procfs = { workspace = true }
 prctl = { workspace = true }
 libcgroups = { path = "../libcgroups", default-features = false, version = "0.7.0" } # MARK: Version
 libseccomp = { workspace = true, optional = true }
+youki-seccomp = { package = "seccomp", path = "../../experiment/seccomp", optional = true }
+syscalls = { version = "0.6.18", default-features = false, features = ["x86_64", "x86", "aarch64", "arm"], optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 rust-criu = { workspace = true }
