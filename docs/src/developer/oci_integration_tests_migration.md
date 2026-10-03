@@ -113,8 +113,9 @@ exists). The following predicates are added under
 | `is_apparmor_enabled()` | `/sys/module/apparmor/parameters/enabled` is `Y` and `apparmor_parser` is found | linux_process_apparmor_profile |
 | `is_selinux_enabled()` | `/sys/fs/selinux/enforce` exists | label check of linux_mount_label |
 | `has_command("unshare")` | found with `which` | linux_ns_path |
-| `has_hugepages()` | `/sys/kernel/mm/hugepages/*` exists and hugetlb controller is enabled | relative hugetlb |
-| `has_min_cpus(n)` | from `cpuset.cpus.effective` | cpuset part of relative cpus |
+| `can_run()` in `cgroups/hugetlb.rs` | hugetlb controller is enabled and `/sys/kernel/mm/hugepages/*` exists | `cgroup_v2_hugetlb` |
+| `can_run_cpuset()` in `cgroups/relative.rs` | cpuset controller is enabled and cpus 0-1 / mem 0 are in `cpuset.{cpus,mems}.effective` | `cgroup_v2_relative::test_relative_cpuset` |
+| `can_run()` in `cgroups/devices.rs` | runtime is runc, or `CONTEST_CGROUPSV2_DEVICES=1` (see the note on devices below) | `cgroup_v2_devices` |
 
 Environment dependent checks must always be wrapped in `ConditionalTest` so that
 they are skipped instead of failing.
@@ -151,6 +152,34 @@ they are skipped instead of failing.
   as expected, while runc passes `created`. This is accepted only when
   `RUNTIME_KIND=runc`.
 
+- **cgroup tests, relative cgroupsPath**: the spec lets the runtime choose the
+  base location. youki (cgroupfs driver) places it under the cgroup root, while
+  runc places it under the parent of its own cgroup. The tests resolve the
+  actual cgroup from `/proc/<pid>/cgroup` and only require it to end with
+  `cgroupsPath`. `cleanup_v2` also removes `runtime-test` left under the cgroup
+  of contest and its parent.
+- **cgroup_v2_devices is opt-in for youki**: youki enforces device rules on
+  cgroup v2 only when built with the `cgroupsv2_devices` feature. Neither the
+  default build nor `just youki-release`, which CI uses, enables it, and then
+  `linux.resources.devices` is silently ignored: no `cgroup_device` eBPF
+  program is attached to the container's cgroup. The runtime cannot report
+  whether the feature is enabled, so the tests run only for runc or when
+  `CONTEST_CGROUPSV2_DEVICES=1` is set, for example:
+
+  ```console
+  ./scripts/build.sh -o . -r -c youki -f "v2 cgroupsv2_devices"
+  sudo CONTEST_CGROUPSV2_DEVICES=1 ./scripts/contest.sh ./youki cgroup_v2_devices
+  ```
+
+  They pass with such a build and with runc, and fail with the default build.
+  Whether CI should build youki with the feature (or whether it should be
+  enabled by default) is left to the maintainers. Note that the Go
+  `linux_cgroups_devices.t` never caught this, because its validation only
+  supports cgroup v1 and is skipped on cgroup v2.
+- **cgroup tests, options without a cgroup v2 counterpart**: `swappiness`,
+  `kernel`, `kernelTCP` and `disableOOMKiller` of
+  linux_cgroups_relative_memory are not tested.
+
 ## Steps
 
 ### Step 0: housekeeping
@@ -177,17 +206,25 @@ they are skipped instead of failing.
 
 ### Step 2: cgroup v2
 
-- [ ] Relative `cgroupsPath` for pids / memory / cpu, plus cpuset `cpus` /
-      `mems`.
-- [ ] delete_resources: the cgroup created by the runtime is removed after
+- [x] linux_cgroups_relative_{pids,memory,cpus} (`cgroup_v2_relative`):
+      pids limit, memory limit/reservation, cpu quota/period and cpuset
+      `cpus` / `mems` with a relative `cgroupsPath`. Shares (cpu.weight) are
+      already covered by `cgroup_v2_cpu`.
+- [x] delete_resources (`delete_resources::delete_resources`): the cgroup
+      created by the runtime is removed after `delete`.
+- [x] delete_only_create_resources
+      (`delete_resources::delete_only_create_resources`): a cgroup created by
+      the test, into which the container process is moved through
+      `cgroup.procs` (`tasks` in the Go test, cgroup v1), is kept after
       `delete`.
-- [ ] delete_only_create_resources: a cgroup created by the test, into which
-      the container process is moved, is kept after `delete`.
-- [ ] hugetlb: `hugetlb.<size>.max` for each available page size, absolute and
-      relative path.
-- [ ] devices: deny-all plus allow rules (c 10:229 rwm, b 8:20 rw,
-      b 10:200 r), validated from inside the container, absolute and relative
+- [x] linux_cgroups_relative_hugetlb (`cgroup_v2_hugetlb`):
+      `hugetlb.<size>.max` for each available page size, absolute and relative
       path.
+- [x] linux_cgroups_devices / linux_cgroups_relative_devices
+      (`cgroup_v2_devices`): deny-all plus allow rules (c 10:229 rwm,
+      b 8:20 rw, b 10:200 r) and a node not allowed by any rule (c 240:0),
+      validated by runtimetest `cgroup_devices`, absolute and relative path.
+      Opt-in for youki, see the note below.
 
 ### Step 3: larger or environment dependent tests
 
