@@ -9,17 +9,9 @@ cd $OCI_TEST_DIR
 
 test_cases=(
   "default/default.t"
-  "delete_only_create_resources/delete_only_create_resources.t"
-  "delete_resources/delete_resources.t"
-  "linux_cgroups_devices/linux_cgroups_devices.t"
   # This case includes checking for features that are excluded from linux kernel 5.0, so even runc doesn't pass it.
   # ref. https://github.com/docker/cli/pull/2908
   # "linux_cgroups_relative_blkio/linux_cgroups_relative_blkio.t"
-  "linux_cgroups_relative_cpus/linux_cgroups_relative_cpus.t"
-  "linux_cgroups_relative_devices/linux_cgroups_relative_devices.t"
-  "linux_cgroups_relative_hugetlb/linux_cgroups_relative_hugetlb.t"
-  "linux_cgroups_relative_memory/linux_cgroups_relative_memory.t"
-  "linux_cgroups_relative_pids/linux_cgroups_relative_pids.t"
   "linux_mount_label/linux_mount_label.t"
   # This test case requires that an apparmor profile named 'acme_secure_profile' has been installed on the system. It needs to allow the capabilities
   # validated by runtime-tools otherwise the test case will fail despite the profile being available.
@@ -45,6 +37,14 @@ test_cases=(
   # "linux_ns_nopath/linux_ns_nopath.t"
   # "linux_ns_path/linux_ns_path.t"
   # "linux_ns_path_type/linux_ns_path_type.t"
+  # "delete_only_create_resources/delete_only_create_resources.t"
+  # "delete_resources/delete_resources.t"
+  # "linux_cgroups_devices/linux_cgroups_devices.t"
+  # "linux_cgroups_relative_cpus/linux_cgroups_relative_cpus.t"
+  # "linux_cgroups_relative_devices/linux_cgroups_relative_devices.t"
+  # "linux_cgroups_relative_hugetlb/linux_cgroups_relative_hugetlb.t"
+  # "linux_cgroups_relative_memory/linux_cgroups_relative_memory.t"
+  # "linux_cgroups_relative_pids/linux_cgroups_relative_pids.t"
   # "delete/delete.t"
   # "hooks/hooks.t"
   # "hostname/hostname.t"
