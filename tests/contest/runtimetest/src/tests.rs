@@ -1920,3 +1920,63 @@ pub fn validate_default(spec: &Spec) {
     }
     validate_sysctl(spec);
 }
+
+fn get_selinux_label(path: &Path) -> std::io::Result<String> {
+    let c_path = std::ffi::CString::new(path.as_os_str().as_encoded_bytes())?;
+    let name = c"security.selinux";
+    let mut buf = vec![0u8; 256];
+    // SAFETY: c_path and name are NUL terminated, buf is valid for buf.len() bytes
+    let len = unsafe {
+        libc::getxattr(
+            c_path.as_ptr(),
+            name.as_ptr(),
+            buf.as_mut_ptr().cast(),
+            buf.len(),
+        )
+    };
+    if len < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    buf.truncate(len as usize);
+    // the value may be NUL terminated
+    while buf.last() == Some(&0) {
+        buf.pop();
+    }
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// Validates linux.mountLabel. When SELinux is enabled, mounts other than
+/// proc, sysfs and bind mounts must be labeled with mountLabel.
+pub fn validate_mount_label(spec: &Spec) {
+    let Some(mount_label) = spec.linux().as_ref().and_then(|l| l.mount_label().clone()) else {
+        return eprintln!("error due to linux.mountLabel not set in spec");
+    };
+    if !Path::new("/sys/fs/selinux").exists() {
+        // SELinux is disabled, so the label is not applied
+        return;
+    }
+
+    for mount in spec.mounts().iter().flatten() {
+        let is_bind = mount
+            .options()
+            .iter()
+            .flatten()
+            .any(|o| o == "bind" || o == "rbind");
+        let typ = mount.typ().as_deref().unwrap_or_default();
+        // devpts is labeled by the policy (context=defaults is not mountLabel)
+        if is_bind || matches!(typ, "proc" | "sysfs" | "devpts" | "cgroup" | "cgroup2" | "") {
+            continue;
+        }
+        match get_selinux_label(mount.destination()) {
+            Ok(label) if label == mount_label => {}
+            Ok(label) => eprintln!(
+                "error due to label of {:?} want {mount_label}, got {label}",
+                mount.destination()
+            ),
+            Err(e) => eprintln!(
+                "error due to failure in getting label of {:?}: {e}",
+                mount.destination()
+            ),
+        }
+    }
+}

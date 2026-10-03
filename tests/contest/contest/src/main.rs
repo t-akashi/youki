@@ -31,6 +31,7 @@ use crate::tests::kill_no_effect::get_kill_no_effect_test;
 use crate::tests::killsig::get_killsig_test;
 use crate::tests::lifecycle::{ContainerCreate, ContainerLifecycle};
 use crate::tests::linux_masked_paths::get_linux_masked_paths_tests;
+use crate::tests::linux_mount_label::get_mount_label_test;
 use crate::tests::linux_ns_itype::get_ns_itype_tests;
 use crate::tests::linux_ns_nopath::get_ns_nopath_tests;
 use crate::tests::linux_ns_path::get_ns_path_tests;
@@ -206,6 +207,7 @@ fn main() -> Result<()> {
     let delete_resources = get_delete_resources_tests();
     let default = get_default_test();
     let mounts = get_mounts_test();
+    let mount_label = get_mount_label_test();
 
     tm.add_test_group(Box::new(cl));
     tm.add_test_group(Box::new(cc));
@@ -277,6 +279,7 @@ fn main() -> Result<()> {
     tm.add_test_group(Box::new(delete_resources));
     tm.add_test_group(Box::new(default));
     tm.add_test_group(Box::new(mounts));
+    tm.add_test_group(Box::new(mount_label));
     tm.add_cleanup(Box::new(cgroups::cleanup_v2));
 
     match opts.command {

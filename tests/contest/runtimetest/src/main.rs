@@ -63,6 +63,7 @@ fn main() {
         "mount_propagation" => tests::validate_mount_propagation(&spec),
         "mounts" => tests::validate_posix_mounts(&spec),
         "default" => tests::validate_default(&spec),
+        "mount_label" => tests::validate_mount_label(&spec),
         "uid_mappings" => tests::validate_uid_mappings(&spec),
         "net_devices" => tests::validate_net_devices(&spec),
         "time_offsets" => tests::validate_time_offsets(&spec),
