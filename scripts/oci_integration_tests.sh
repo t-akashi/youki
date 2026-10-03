@@ -8,13 +8,10 @@ PATTERN=${2:-.}
 cd $OCI_TEST_DIR
 
 test_cases=(
-  "create/create.t"
   "default/default.t"
   "delete_only_create_resources/delete_only_create_resources.t"
   "delete_resources/delete_resources.t"
   "hooks_stdin/hooks_stdin.t"
-  "kill_no_effect/kill_no_effect.t"
-  "killsig/killsig.t"
   "linux_cgroups_devices/linux_cgroups_devices.t"
   # This case includes checking for features that are excluded from linux kernel 5.0, so even runc doesn't pass it.
   # ref. https://github.com/docker/cli/pull/2908
@@ -33,18 +30,21 @@ test_cases=(
   # "linux_process_apparmor_profile/linux_process_apparmor_profile.t"
   # "misc_props/misc_props.t" runc also fails this, check out https://github.com/youki-dev/youki/pull/1347#issuecomment-1315332775
   "mounts/mounts.t"
-  "poststart/poststart.t"
-  "poststart_fail/poststart_fail.t"
-  "poststop/poststop.t"
-  "poststop_fail/poststop_fail.t"
-  "prestart/prestart.t"
-  "prestart_fail/prestart_fail.t"
-  "process_capabilities/process_capabilities.t"
   # Record the tests that runc also fails to pass below, maybe we will fix this by origin integration test, issue: https://github.com/youki-dev/youki/issues/56
   # "start/start.t"
-  "state/state.t"
 
   # The below tests have already been implemented in our integration tests, `contest`.
+  # "create/create.t"
+  # "kill_no_effect/kill_no_effect.t"
+  # "killsig/killsig.t"
+  # "poststart/poststart.t"
+  # "poststart_fail/poststart_fail.t"
+  # "poststop/poststop.t"
+  # "poststop_fail/poststop_fail.t"
+  # "prestart/prestart.t"
+  # "prestart_fail/prestart_fail.t"
+  # "process_capabilities/process_capabilities.t"
+  # "state/state.t"
   # "delete/delete.t"
   # "hooks/hooks.t"
   # "hostname/hostname.t"
