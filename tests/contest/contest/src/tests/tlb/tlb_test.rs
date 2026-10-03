@@ -96,7 +96,7 @@ fn extract_page_size(dir_name: &str) -> String {
     }
 }
 
-fn get_tlb_sizes() -> Vec<String> {
+pub fn get_tlb_sizes() -> Vec<String> {
     let mut sizes = Vec::new();
     for hugetlb_entry in std::fs::read_dir("/sys/kernel/mm/hugepages")
         .expect("error in reading /sys/kernel/mm/hugepages")
