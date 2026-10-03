@@ -29,6 +29,9 @@ use crate::tests::killsig::get_killsig_test;
 use crate::tests::lifecycle::{ContainerCreate, ContainerLifecycle};
 use crate::tests::linux_masked_paths::get_linux_masked_paths_tests;
 use crate::tests::linux_ns_itype::get_ns_itype_tests;
+use crate::tests::linux_ns_nopath::get_ns_nopath_tests;
+use crate::tests::linux_ns_path::get_ns_path_tests;
+use crate::tests::linux_ns_path_type::get_ns_path_type_tests;
 use crate::tests::memory_policy::get_linux_memory_policy_tests;
 use crate::tests::misc_props::get_misc_props_test;
 use crate::tests::mount_propagation::get_mount_propagation_test;
@@ -189,6 +192,9 @@ fn main() -> Result<()> {
     let checkpoint_restore = get_checkpoint_restore_tests();
     let update = get_update_test();
     let time_ns = get_time_ns_test();
+    let ns_nopath = get_ns_nopath_tests();
+    let ns_path = get_ns_path_tests();
+    let ns_path_type = get_ns_path_type_tests();
 
     tm.add_test_group(Box::new(cl));
     tm.add_test_group(Box::new(cc));
@@ -250,6 +256,9 @@ fn main() -> Result<()> {
     tm.add_test_group(Box::new(checkpoint_restore));
     tm.add_test_group(Box::new(update));
     tm.add_test_group(Box::new(time_ns));
+    tm.add_test_group(Box::new(ns_nopath));
+    tm.add_test_group(Box::new(ns_path));
+    tm.add_test_group(Box::new(ns_path_type));
     tm.add_cleanup(Box::new(cgroups::cleanup_v2));
 
     match opts.command {

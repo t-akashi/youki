@@ -93,6 +93,11 @@ pub fn set_config<P: AsRef<Path>>(project_path: P, config: &Spec) -> Result<()> 
     Ok(())
 }
 
+/// Returns true if the given command is found in $PATH
+pub fn has_command(name: &str) -> bool {
+    which::which(name).is_ok()
+}
+
 pub fn is_runtime_runc() -> bool {
     match std::env::var("RUNTIME_KIND") {
         Err(_) => false,
