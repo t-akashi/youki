@@ -152,6 +152,7 @@ fn main() -> Result<()> {
     let cgroup_v2_pids = cgroups::pids::get_test_group();
     let cgroup_v2_relative = cgroups::relative::get_test_group();
     let cgroup_v2_hugetlb = cgroups::hugetlb::get_test_group();
+    let cgroup_v2_devices = cgroups::devices::get_test_group();
     let seccomp = get_seccomp_test();
     let seccomp_notify = get_seccomp_notify_test();
     let state = get_state_test();
@@ -219,6 +220,7 @@ fn main() -> Result<()> {
     tm.add_test_group(Box::new(cgroup_v2_pids));
     tm.add_test_group(Box::new(cgroup_v2_relative));
     tm.add_test_group(Box::new(cgroup_v2_hugetlb));
+    tm.add_test_group(Box::new(cgroup_v2_devices));
     tm.add_test_group(Box::new(seccomp));
     tm.add_test_group(Box::new(seccomp_notify));
     tm.add_test_group(Box::new(state));

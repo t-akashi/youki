@@ -47,6 +47,7 @@ fn main() {
         "io_priority_class_idle" => tests::test_io_priority_class(&spec, IoprioClassIdle),
         "memory_policy" => tests::validate_memory_policy(&spec),
         "devices" => tests::validate_devices(&spec),
+        "cgroup_devices" => tests::validate_cgroup_devices(&spec),
         "root_readonly" => tests::test_validate_root_readonly(&spec),
         "process_capabilities_bounding_unset" => {
             tests::validate_process_capabilities_bounding_unset(&spec)

@@ -15,6 +15,7 @@ use netlink_packet_route::link::{LinkAttribute, LinkMessage};
 use netlink_sys::Socket;
 use netlink_sys::protocols::NETLINK_ROUTE;
 use nix::errno::Errno;
+use nix::fcntl::{OFlag, open};
 use nix::libc;
 use nix::mount::{MsFlags, mount};
 use nix::sys::resource::{Resource, getrlimit};
@@ -24,8 +25,8 @@ use nix::unistd::{Gid, Uid, getcwd, getgid, getgroups, getuid};
 use oci_spec::runtime::IOPriorityClass::{self, IoprioClassBe, IoprioClassIdle, IoprioClassRt};
 use oci_spec::runtime::MemoryPolicyFlagType::*;
 use oci_spec::runtime::{
-    Capability, LinuxDevice, LinuxDeviceType, LinuxIdMapping, LinuxSchedulerPolicy,
-    MemoryPolicyModeType, PosixRlimit, PosixRlimitType, Spec,
+    Capability, LinuxDevice, LinuxDeviceCgroup, LinuxDeviceType, LinuxIdMapping,
+    LinuxSchedulerPolicy, MemoryPolicyModeType, PosixRlimit, PosixRlimitType, Spec,
 };
 use procfs::process::{MountInfo, MountOptFields, Process};
 use tempfile::Builder;
@@ -546,6 +547,73 @@ fn validate_device(device: &LinuxDevice, description: &str) {
             expected_gid,
             file_data.st_gid()
         );
+    }
+}
+
+/// Returns the access ("r", "w", "m") permitted to the device by the given
+/// device cgroup rules. Rules are applied in order, and an access is denied
+/// unless allowed by a rule.
+fn device_cgroup_access(rules: &[LinuxDeviceCgroup], device: &LinuxDevice) -> String {
+    let mut permitted = String::new();
+    for rule in rules {
+        let type_matches = match rule.typ() {
+            None | Some(LinuxDeviceType::A) => true,
+            Some(typ) => typ == device.typ(),
+        };
+        let major_matches = rule.major().is_none_or(|major| major == device.major());
+        let minor_matches = rule.minor().is_none_or(|minor| minor == device.minor());
+        if !(type_matches && major_matches && minor_matches) {
+            continue;
+        }
+
+        let access = rule.access().clone().unwrap_or_else(|| "rwm".to_string());
+        for c in access.chars() {
+            if rule.allow() {
+                if !permitted.contains(c) {
+                    permitted.push(c);
+                }
+            } else {
+                permitted.retain(|p| p != c);
+            }
+        }
+    }
+    permitted
+}
+
+/// Validates that read/write access to each device in linux.devices is
+/// permitted or denied according to linux.resources.devices.
+pub fn validate_cgroup_devices(spec: &Spec) {
+    let linux = spec.linux().as_ref().unwrap();
+    let rules = linux
+        .resources()
+        .as_ref()
+        .and_then(|r| r.devices().clone())
+        .unwrap_or_default();
+
+    for device in linux.devices().iter().flatten() {
+        let permitted = device_cgroup_access(&rules, device);
+        for (access, flag) in [('r', OFlag::O_RDONLY), ('w', OFlag::O_WRONLY)] {
+            let result = open(
+                device.path(),
+                flag | OFlag::O_NONBLOCK | OFlag::O_CLOEXEC,
+                Mode::empty(),
+            );
+            // Errors other than EPERM (e.g. ENXIO for a device without a
+            // driver) are returned after the device cgroup check passed.
+            let actual = !matches!(result, Err(Errno::EPERM));
+            let expected = permitted.contains(access);
+            if actual != expected {
+                eprintln!(
+                    "error due to unexpected '{access}' access to {:?}: expected {}, got {}",
+                    device.path(),
+                    if expected { "permitted" } else { "denied" },
+                    match &result {
+                        Ok(_) => "permitted".to_string(),
+                        Err(err) => format!("{err}"),
+                    }
+                );
+            }
+        }
     }
 }
 
