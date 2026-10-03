@@ -42,7 +42,7 @@ The goal is:
 
 | Go test | Existing contest test | Missing |
 |---|---|---|
-| mounts | `mount_propagation` (bind/rbind with shared/slave/private variants) | tmpfs with propagation flags, `unbindable` / `runbindable` |
+| mounts | `mount_propagation` (bind/rbind with shared/slave/private/unbindable variants) | the presence and order of mounts, tmpfs with propagation flags |
 | linux_cgroups_relative_pids | `cgroup_v2_pids` (absolute path only) | relative `cgroupsPath` |
 | linux_cgroups_relative_memory | `cgroup_v2_memory` (absolute path only) | relative `cgroupsPath` |
 | linux_cgroups_relative_cpus | `cgroup_v2_cpu` (absolute path only) | relative `cgroupsPath`, cpuset `cpus` / `mems` |
@@ -180,6 +180,32 @@ they are skipped instead of failing.
   `kernel`, `kernelTCP` and `disableOOMKiller` of
   linux_cgroups_relative_memory are not tested.
 
+- **default, readonly paths**: as in runtime-tools, readonly paths are only
+  required not to be writable. The existing `validate_readonly_paths` also
+  requires them to be readable, which fails for `/proc/sysrq-trigger`
+  (mode 0200) without `CAP_DAC_OVERRIDE`.
+- **default / mounts, cgroup mount type**: a mount of type `cgroup` (as in the
+  default mounts) is accepted as `cgroup2` on the unified hierarchy.
+- **mounts, propagation of tmpfs**: the Go test only checks the presence of the
+  mounts. `mount_propagation` checks `shared` and `private` on tmpfs, but not
+  `slave`, as a new tmpfs mount has no master to receive events from.
+- **mount_label, masked and readonly paths**: as in runtime-tools, the test
+  sets no masked or readonly paths. Finding (please review): with
+  `mountLabel` set, youki adds `context=` to the tmpfs masking a directory
+  (e.g. `/proc/acpi` of the default masked paths) even when SELinux is
+  disabled, and the mount fails with `EINVAL`. For other mounts youki ignores
+  the label when `/sys/fs/selinux` does not exist, so this looks like an
+  inconsistency in youki (`masked_paths()` in
+  `crates/libcontainer/src/process/init/process.rs`).
+- **mount_label, runc**: runc adds `context=` to mounts such as `/dev` even
+  when SELinux is disabled and fails to create the container, also with the
+  Go test. So the test is skipped for runc unless SELinux is enabled.
+- **mount_label, label check**: the check of `security.selinux` has not been
+  exercised yet, as no SELinux-enabled host was available.
+- **apparmor_profile**: instead of requiring a preinstalled
+  `acme_secure_profile`, the test loads its own permissive profile with
+  `apparmor_parser --replace` and removes it afterwards.
+
 ## Steps
 
 ### Step 0: housekeeping
@@ -228,20 +254,25 @@ they are skipped instead of failing.
 
 ### Step 3: larger or environment dependent tests
 
-- [ ] mounts: add tmpfs with propagation flags and unbindable/runbindable to
-      `mount_propagation`.
-- [ ] default: runtimetest `validate_default` combining the existing
-      validations with default symlinks, default filesystems, default devices
-      and `spec.mounts` presence and order.
-- [ ] linux_mount_label: the container starts with `mountLabel` set; the
-      `security.selinux` label of bind mounts is checked only when SELinux is
-      enabled.
-- [ ] linux_process_apparmor_profile: see table D; conditional on
-      `is_apparmor_enabled()`.
+- [x] mounts (`mounts`): the 11 mounts of runtime-tools (tmpfs and /etc
+      binds with propagation options) are added to the default mounts, and
+      runtimetest `mounts` checks that every mount in `spec.mounts` exists in
+      the listed order, as the Go test does. In addition,
+      `mount_propagation` got tmpfs `shared` / `private` cases.
+- [x] default (`default`): runtimetest `default` combines hostname,
+      process (cwd/env), uid/gid, rlimits, capabilities, oom_score_adj,
+      default symlinks, default filesystems, default devices, linux.devices,
+      mounts in order, masked paths, readonly paths and sysctl.
+- [x] linux_mount_label (`mount_label`): the container is created with
+      `mountLabel` set; when SELinux is enabled, runtimetest also checks the
+      `security.selinux` label of the mounts. See the note below.
+- [x] linux_process_apparmor_profile (`apparmor_profile`): see table D;
+      skipped unless AppArmor is enabled and `apparmor_parser` is found.
 
 ### Step 4: wrap up
 
-- [ ] Once `test_cases` is empty, propose how to handle `just test-oci` and the
+- [ ] `test_cases` is now empty, so `just test-oci` runs nothing. Propose how
+      to handle it and the
       CI workflow (removing the script needs agreement with the maintainers).
 - [ ] Consider porting the spec items of `start` as a follow-up.
 
