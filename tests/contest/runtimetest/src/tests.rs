@@ -1733,3 +1733,61 @@ pub fn validate_mount_propagation(spec: &Spec) {
         }
     }
 }
+
+fn read_mountinfo() -> Option<Vec<MountInfo>> {
+    match Process::myself().and_then(|p| p.mountinfo()) {
+        std::result::Result::Ok(mi) => Some(mi.into_iter().collect()),
+        Err(e) => {
+            eprintln!("error due to failure in reading mountinfo: {e}");
+            None
+        }
+    }
+}
+
+/// Validates that every mount in spec.mounts exists, in the listed order.
+pub fn validate_posix_mounts(spec: &Spec) {
+    let Some(mounts) = spec.mounts() else {
+        return;
+    };
+    let Some(mountinfo) = read_mountinfo() else {
+        return;
+    };
+
+    let mut next = 0;
+    for (i, mount) in mounts.iter().enumerate() {
+        let dest = mount.destination();
+        let is_bind = mount.typ().as_deref() == Some("bind")
+            || mount
+                .options()
+                .iter()
+                .flatten()
+                .any(|o| o == "bind" || o == "rbind");
+        let matches = |info: &&MountInfo| {
+            if info.mount_point != *dest {
+                return false;
+            }
+            if is_bind {
+                // For bind mounts, the source is the path on the host, shown as root.
+                // Compare only the base name in case of running in a chroot.
+                return mount
+                    .source()
+                    .as_ref()
+                    .is_none_or(|src| src.file_name() == Path::new(&info.root).file_name());
+            }
+            match mount.typ().as_deref() {
+                None | Some("") => true,
+                // "cgroup" is mounted as cgroup2 on the unified hierarchy
+                Some("cgroup") => info.fs_type == "cgroup" || info.fs_type == "cgroup2",
+                Some(typ) => info.fs_type == typ,
+            }
+        };
+
+        if let Some(k) = mountinfo[next..].iter().position(|m| matches(&m)) {
+            next += k + 1;
+        } else if mountinfo[..next].iter().any(|m| matches(&m)) {
+            eprintln!("error due to mounts[{i}] ({dest:?}) found, but not in order");
+        } else {
+            eprintln!("error due to mounts[{i}] ({dest:?}) not found");
+        }
+    }
+}

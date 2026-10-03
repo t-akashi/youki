@@ -27,6 +27,7 @@ pub mod linux_ns_path_type;
 pub mod memory_policy;
 pub mod misc_props;
 pub mod mount_propagation;
+pub mod mounts;
 pub mod mounts_recursive;
 pub mod net_devices;
 pub mod no_pivot;

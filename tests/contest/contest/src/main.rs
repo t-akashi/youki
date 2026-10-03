@@ -37,6 +37,7 @@ use crate::tests::linux_ns_path_type::get_ns_path_type_tests;
 use crate::tests::memory_policy::get_linux_memory_policy_tests;
 use crate::tests::misc_props::get_misc_props_test;
 use crate::tests::mount_propagation::get_mount_propagation_test;
+use crate::tests::mounts::get_mounts_test;
 use crate::tests::mounts_recursive::get_mounts_recursive_test;
 use crate::tests::net_devices::get_net_devices_test;
 use crate::tests::no_pivot::get_no_pivot_test;
@@ -202,6 +203,7 @@ fn main() -> Result<()> {
     let ns_path_type = get_ns_path_type_tests();
     let hooks_stdin = get_hooks_stdin_tests();
     let delete_resources = get_delete_resources_tests();
+    let mounts = get_mounts_test();
 
     tm.add_test_group(Box::new(cl));
     tm.add_test_group(Box::new(cc));
@@ -271,6 +273,7 @@ fn main() -> Result<()> {
     tm.add_test_group(Box::new(ns_path_type));
     tm.add_test_group(Box::new(hooks_stdin));
     tm.add_test_group(Box::new(delete_resources));
+    tm.add_test_group(Box::new(mounts));
     tm.add_cleanup(Box::new(cgroups::cleanup_v2));
 
     match opts.command {

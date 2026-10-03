@@ -42,6 +42,39 @@ fn create_spec(source: &Path, propagation: &str) -> Result<Spec> {
     Ok(spec)
 }
 
+// A tmpfs mount with a propagation option, as in the mounts test of runtime-tools.
+// slave is not tested, as a new tmpfs mount has no master to receive events from.
+fn create_tmpfs_spec(propagation: &str) -> Result<Spec> {
+    let mut mounts = get_default_mounts();
+
+    let mut mount_spec = Mount::default();
+    mount_spec
+        .set_destination(PathBuf::from_str(MOUNT_DEST).unwrap())
+        .set_typ(Some("tmpfs".to_string()))
+        .set_source(Some(PathBuf::from("tmpfs")))
+        .set_options(Some(vec![propagation.to_string()]));
+    mounts.push(mount_spec);
+
+    let process = ProcessBuilder::default()
+        .args(vec![
+            "runtimetest".to_string(),
+            "mount_propagation".to_string(),
+        ])
+        .build()
+        .context("failed to build process")?;
+
+    SpecBuilder::default()
+        .mounts(mounts)
+        .process(process)
+        .build()
+        .context("failed to build spec")
+}
+
+fn check_tmpfs_propagation(propagation: &str) -> TestResult {
+    let spec = test_result!(create_tmpfs_spec(propagation));
+    test_inside_container(&spec, &CreateOptions::default(), &|_| Ok(()))
+}
+
 // Make mount_dir shared and add a submount so propagation changes are
 // observable, including the difference between recursive and non-recursive options.
 fn setup_mount(mount_dir: &Path, sub_mount_dir: &Path) -> Result<()> {
@@ -116,6 +149,14 @@ fn runbindable_test() -> TestResult {
     check_propagation("runbindable")
 }
 
+fn tmpfs_shared_test() -> TestResult {
+    check_tmpfs_propagation("shared")
+}
+
+fn tmpfs_private_test() -> TestResult {
+    check_tmpfs_propagation("private")
+}
+
 pub fn get_mount_propagation_test() -> TestGroup {
     let mut test_group = TestGroup::new("mount_propagation");
 
@@ -134,6 +175,15 @@ pub fn get_mount_propagation_test() -> TestGroup {
         Box::new(runbindable_test),
     );
 
+    let tmpfs_shared_test = Test::new(
+        "mount_propagation_tmpfs_shared_test",
+        Box::new(tmpfs_shared_test),
+    );
+    let tmpfs_private_test = Test::new(
+        "mount_propagation_tmpfs_private_test",
+        Box::new(tmpfs_private_test),
+    );
+
     test_group.add(vec![
         Box::new(shared_test),
         Box::new(rshared_test),
@@ -143,6 +193,8 @@ pub fn get_mount_propagation_test() -> TestGroup {
         Box::new(rprivate_test),
         Box::new(unbindable_test),
         Box::new(runbindable_test),
+        Box::new(tmpfs_shared_test),
+        Box::new(tmpfs_private_test),
     ]);
 
     test_group

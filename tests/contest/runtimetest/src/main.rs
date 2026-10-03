@@ -61,6 +61,7 @@ fn main() {
         "fd_control" => tests::validate_fd_control(&spec),
         "rootfs_propagation" => tests::validate_rootfs_propagation(&spec),
         "mount_propagation" => tests::validate_mount_propagation(&spec),
+        "mounts" => tests::validate_posix_mounts(&spec),
         "uid_mappings" => tests::validate_uid_mappings(&spec),
         "net_devices" => tests::validate_net_devices(&spec),
         "time_offsets" => tests::validate_time_offsets(&spec),
