@@ -9,6 +9,7 @@ use contest::logger;
 use test_framework::TestManager;
 use tests::cgroups;
 
+use crate::tests::apparmor_profile::get_apparmor_profile_test;
 use crate::tests::checkpoint_restore::get_checkpoint_restore_tests;
 use crate::tests::create_runtime::get_create_runtime_tests;
 use crate::tests::default::get_default_test;
@@ -208,6 +209,7 @@ fn main() -> Result<()> {
     let default = get_default_test();
     let mounts = get_mounts_test();
     let mount_label = get_mount_label_test();
+    let apparmor_profile = get_apparmor_profile_test();
 
     tm.add_test_group(Box::new(cl));
     tm.add_test_group(Box::new(cc));
@@ -280,6 +282,7 @@ fn main() -> Result<()> {
     tm.add_test_group(Box::new(default));
     tm.add_test_group(Box::new(mounts));
     tm.add_test_group(Box::new(mount_label));
+    tm.add_test_group(Box::new(apparmor_profile));
     tm.add_cleanup(Box::new(cgroups::cleanup_v2));
 
     match opts.command {

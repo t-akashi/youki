@@ -64,6 +64,7 @@ fn main() {
         "mounts" => tests::validate_posix_mounts(&spec),
         "default" => tests::validate_default(&spec),
         "mount_label" => tests::validate_mount_label(&spec),
+        "apparmor_profile" => tests::validate_apparmor_profile(&spec),
         "uid_mappings" => tests::validate_uid_mappings(&spec),
         "net_devices" => tests::validate_net_devices(&spec),
         "time_offsets" => tests::validate_time_offsets(&spec),

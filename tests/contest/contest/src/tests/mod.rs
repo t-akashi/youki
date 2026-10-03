@@ -1,3 +1,4 @@
+pub mod apparmor_profile;
 pub mod cgroups;
 pub mod checkpoint_restore;
 pub mod create_runtime;

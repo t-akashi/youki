@@ -1980,3 +1980,30 @@ pub fn validate_mount_label(spec: &Spec) {
         }
     }
 }
+
+/// Validates that process.apparmorProfile is applied to this process.
+pub fn validate_apparmor_profile(spec: &Spec) {
+    let Some(expected) = spec
+        .process()
+        .as_ref()
+        .and_then(|p| p.apparmor_profile().clone())
+    else {
+        return eprintln!("error due to process.apparmorProfile not set in spec");
+    };
+    // The module specific interface is available since Linux 5.8
+    let current = fs::read_to_string("/proc/self/attr/apparmor/current")
+        .or_else(|_| fs::read_to_string("/proc/self/attr/current"));
+    match current {
+        // the content is "<profile> (<mode>)", e.g. "foo (enforce)"
+        Ok(current) => {
+            let profile = current.trim().split(" (").next().unwrap_or_default();
+            if profile != expected {
+                eprintln!(
+                    "error due to apparmor profile want {expected}, got {}",
+                    current.trim()
+                );
+            }
+        }
+        Err(e) => eprintln!("error due to failure in reading the apparmor profile: {e}"),
+    }
+}
