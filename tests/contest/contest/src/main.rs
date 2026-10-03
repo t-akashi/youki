@@ -11,6 +11,7 @@ use tests::cgroups;
 
 use crate::tests::checkpoint_restore::get_checkpoint_restore_tests;
 use crate::tests::create_runtime::get_create_runtime_tests;
+use crate::tests::default::get_default_test;
 use crate::tests::delete::get_delete_test;
 use crate::tests::delete_resources::get_delete_resources_tests;
 use crate::tests::devices::get_devices_test;
@@ -203,6 +204,7 @@ fn main() -> Result<()> {
     let ns_path_type = get_ns_path_type_tests();
     let hooks_stdin = get_hooks_stdin_tests();
     let delete_resources = get_delete_resources_tests();
+    let default = get_default_test();
     let mounts = get_mounts_test();
 
     tm.add_test_group(Box::new(cl));
@@ -273,6 +275,7 @@ fn main() -> Result<()> {
     tm.add_test_group(Box::new(ns_path_type));
     tm.add_test_group(Box::new(hooks_stdin));
     tm.add_test_group(Box::new(delete_resources));
+    tm.add_test_group(Box::new(default));
     tm.add_test_group(Box::new(mounts));
     tm.add_cleanup(Box::new(cgroups::cleanup_v2));
 

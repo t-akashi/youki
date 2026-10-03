@@ -25,8 +25,8 @@ use nix::unistd::{Gid, Uid, getcwd, getgid, getgroups, getuid};
 use oci_spec::runtime::IOPriorityClass::{self, IoprioClassBe, IoprioClassIdle, IoprioClassRt};
 use oci_spec::runtime::MemoryPolicyFlagType::*;
 use oci_spec::runtime::{
-    Capability, LinuxDevice, LinuxDeviceCgroup, LinuxDeviceType, LinuxIdMapping,
-    LinuxSchedulerPolicy, MemoryPolicyModeType, PosixRlimit, PosixRlimitType, Spec,
+    Capability, LinuxDevice, LinuxDeviceBuilder, LinuxDeviceCgroup, LinuxDeviceType,
+    LinuxIdMapping, LinuxSchedulerPolicy, MemoryPolicyModeType, PosixRlimit, PosixRlimitType, Spec,
 };
 use procfs::process::{MountInfo, MountOptFields, Process};
 use tempfile::Builder;
@@ -1790,4 +1790,133 @@ pub fn validate_posix_mounts(spec: &Spec) {
             eprintln!("error due to mounts[{i}] ({dest:?}) not found");
         }
     }
+}
+
+/// Validates the filesystems a runtime must provide by default.
+fn validate_default_fs() {
+    const DEFAULT_FS: [(&str, &str); 4] = [
+        ("/proc", "proc"),
+        ("/sys", "sysfs"),
+        ("/dev/pts", "devpts"),
+        ("/dev/shm", "tmpfs"),
+    ];
+    let Some(mountinfo) = read_mountinfo() else {
+        return;
+    };
+    for (path, fs_type) in DEFAULT_FS {
+        // the last entry is the one visible at the path
+        match mountinfo
+            .iter()
+            .rev()
+            .find(|m| m.mount_point == Path::new(path))
+        {
+            Some(m) if m.fs_type == fs_type => {}
+            Some(m) => eprintln!(
+                "error due to default filesystem {path} type want {fs_type}, got {}",
+                m.fs_type
+            ),
+            None => eprintln!("error due to default filesystem {path} not mounted"),
+        }
+    }
+}
+
+/// Validates the symlinks a runtime must create by default.
+fn validate_default_symlinks() {
+    const DEFAULT_SYMLINKS: [(&str, &str); 5] = [
+        ("/dev/fd", "/proc/self/fd"),
+        ("/dev/ptmx", "pts/ptmx"),
+        ("/dev/stdin", "/proc/self/fd/0"),
+        ("/dev/stdout", "/proc/self/fd/1"),
+        ("/dev/stderr", "/proc/self/fd/2"),
+    ];
+    for (link, target) in DEFAULT_SYMLINKS {
+        match fs::read_link(link) {
+            Ok(actual) if actual == Path::new(target) => {}
+            Ok(actual) => eprintln!(
+                "error due to default symlink {link} target want {target}, got {actual:?}"
+            ),
+            Err(e) => eprintln!("error due to default symlink {link}: {e}"),
+        }
+    }
+}
+
+/// Validates the devices a runtime must provide by default.
+fn validate_default_devices(spec: &Spec) {
+    let mut devices = vec![
+        ("/dev/null", 1, 3),
+        ("/dev/zero", 1, 5),
+        ("/dev/full", 1, 7),
+        ("/dev/random", 1, 8),
+        ("/dev/urandom", 1, 9),
+        ("/dev/tty", 5, 0),
+        // /dev/ptmx is a symlink to pts/ptmx, whose metadata is checked
+        ("/dev/ptmx", 5, 2),
+    ];
+    let terminal = spec
+        .process()
+        .as_ref()
+        .and_then(|p| p.terminal())
+        .unwrap_or(false);
+    if terminal {
+        // only the existence is checked, as major/minor depend on the controlling terminal
+        if !Path::new("/dev/console").exists() {
+            eprintln!("error due to default device /dev/console not found");
+        }
+    }
+    for (path, major, minor) in devices.drain(..) {
+        let device = LinuxDeviceBuilder::default()
+            .path(path)
+            .typ(LinuxDeviceType::C)
+            .major(major)
+            .minor(minor)
+            .build()
+            .unwrap();
+        validate_device(&device, &format!("{path} (default device)"));
+    }
+}
+
+/// Validates the container created from a default config, combining the
+/// validations of the runtime-tools runtimetest which apply to it.
+pub fn validate_default(spec: &Spec) {
+    validate_hostname(spec);
+    validate_process(spec);
+
+    let process = spec.process().as_ref().unwrap();
+    let (expected_uid, expected_gid) = (process.user().uid(), process.user().gid());
+    if getuid().as_raw() != expected_uid || getgid().as_raw() != expected_gid {
+        eprintln!(
+            "error due to uid/gid want {expected_uid}/{expected_gid}, got {}/{}",
+            getuid(),
+            getgid()
+        );
+    }
+    if process.rlimits().is_some() {
+        validate_process_rlimits(spec);
+    }
+    if process.capabilities().is_some() {
+        validate_process_capabilities(spec);
+    }
+    if process.oom_score_adj().is_some() {
+        validate_process_oom_score_adj(spec);
+    }
+
+    validate_default_symlinks();
+    validate_default_fs();
+    validate_default_devices(spec);
+    validate_devices(spec);
+    validate_posix_mounts(spec);
+
+    let linux = spec.linux().as_ref().unwrap();
+    if linux.masked_paths().is_some() {
+        validate_masked_paths(spec);
+    }
+    // As in runtime-tools, readonly paths are only required not to be writable.
+    // validate_readonly_paths() also requires them to be readable, which is not
+    // the case for e.g. /proc/sysrq-trigger (mode 0200) without CAP_DAC_OVERRIDE.
+    for path in linux.readonly_paths().iter().flatten() {
+        if test_write_access(path).is_ok() {
+            eprintln!("error due to readonly path {path} being writable");
+        }
+    }
+    validate_sysctl(spec);
 }
