@@ -48,3 +48,4 @@
       - [runtime tools](./developer/e2e/runtime_tools.md)
       - [runc compatibility test](./developer/e2e/runc_compatibility_test.md)
       - [Kubernetes test](./developer/e2e/kubernetes_test.md)
+      - [Migrating OCI integration tests](./developer/oci_integration_tests_migration.md)
