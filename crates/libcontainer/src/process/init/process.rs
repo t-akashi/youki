@@ -598,8 +598,14 @@ fn masked_paths(
 
         if path.is_dir() {
             // Destination is a directory, mount a read-only tmpfs over the top of it.
+            // As for other mounts, the label is applied only when SELinux is
+            // enabled; otherwise tmpfs rejects the context option with EINVAL.
             let label = match mount_label {
-                Some(l) => format!("context=\"{l}\""),
+                Some(l) if Path::new("/sys/fs/selinux").exists() => format!("context=\"{l}\""),
+                Some(_) => {
+                    tracing::debug!("ignoring mount label because SELinux is disabled");
+                    "".to_string()
+                }
                 None => "".to_string(),
             };
             syscall
@@ -1349,7 +1355,11 @@ mod tests {
             target: PathBuf::from("/proc/self"),
             fstype: Some("tmpfs".to_string()),
             flags: MsFlags::MS_RDONLY,
-            data: Some("context=\"default\"".to_string()),
+            data: Some(if Path::new("/sys/fs/selinux").exists() {
+                "context=\"default\"".to_string()
+            } else {
+                "".to_string()
+            }),
         };
         assert_eq!(1, got.len());
         assert_eq!(want, got[0]);
