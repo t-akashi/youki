@@ -10,6 +10,7 @@ pub mod exec_cpu_affinity;
 pub mod exec_env;
 pub mod fd_control;
 pub mod hooks;
+pub mod hooks_stdin;
 pub mod hostname;
 pub mod intel_rdt;
 pub mod io_priority;

@@ -20,6 +20,7 @@ use crate::tests::exec_cpu_affinity::get_exec_cpu_affinity_test;
 use crate::tests::exec_env::get_exec_env_test;
 use crate::tests::fd_control::get_fd_control_test;
 use crate::tests::hooks::{get_hooks_tests, get_start_container_env_tests};
+use crate::tests::hooks_stdin::get_hooks_stdin_tests;
 use crate::tests::hostname::get_hostname_test;
 use crate::tests::intel_rdt::get_intel_rdt_test;
 use crate::tests::io_priority::get_io_priority_test;
@@ -195,6 +196,7 @@ fn main() -> Result<()> {
     let ns_nopath = get_ns_nopath_tests();
     let ns_path = get_ns_path_tests();
     let ns_path_type = get_ns_path_type_tests();
+    let hooks_stdin = get_hooks_stdin_tests();
 
     tm.add_test_group(Box::new(cl));
     tm.add_test_group(Box::new(cc));
@@ -259,6 +261,7 @@ fn main() -> Result<()> {
     tm.add_test_group(Box::new(ns_nopath));
     tm.add_test_group(Box::new(ns_path));
     tm.add_test_group(Box::new(ns_path_type));
+    tm.add_test_group(Box::new(hooks_stdin));
     tm.add_cleanup(Box::new(cgroups::cleanup_v2));
 
     match opts.command {
