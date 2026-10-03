@@ -8,16 +8,10 @@ PATTERN=${2:-.}
 cd $OCI_TEST_DIR
 
 test_cases=(
-  "default/default.t"
   # This case includes checking for features that are excluded from linux kernel 5.0, so even runc doesn't pass it.
   # ref. https://github.com/docker/cli/pull/2908
   # "linux_cgroups_relative_blkio/linux_cgroups_relative_blkio.t"
-  "linux_mount_label/linux_mount_label.t"
-  # This test case requires that an apparmor profile named 'acme_secure_profile' has been installed on the system. It needs to allow the capabilities
-  # validated by runtime-tools otherwise the test case will fail despite the profile being available.
-  # "linux_process_apparmor_profile/linux_process_apparmor_profile.t"
   # "misc_props/misc_props.t" runc also fails this, check out https://github.com/youki-dev/youki/pull/1347#issuecomment-1315332775
-  "mounts/mounts.t"
   # Record the tests that runc also fails to pass below, maybe we will fix this by origin integration test, issue: https://github.com/youki-dev/youki/issues/56
   # "start/start.t"
 
@@ -45,6 +39,10 @@ test_cases=(
   # "linux_cgroups_relative_hugetlb/linux_cgroups_relative_hugetlb.t"
   # "linux_cgroups_relative_memory/linux_cgroups_relative_memory.t"
   # "linux_cgroups_relative_pids/linux_cgroups_relative_pids.t"
+  # "default/default.t"
+  # "linux_mount_label/linux_mount_label.t"
+  # "mounts/mounts.t"
+  # "linux_process_apparmor_profile/linux_process_apparmor_profile.t"
   # "delete/delete.t"
   # "hooks/hooks.t"
   # "hostname/hostname.t"
