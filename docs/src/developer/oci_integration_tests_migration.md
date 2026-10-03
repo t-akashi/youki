@@ -189,14 +189,14 @@ they are skipped instead of failing.
 - **mounts, propagation of tmpfs**: the Go test only checks the presence of the
   mounts. `mount_propagation` checks `shared` and `private` on tmpfs, but not
   `slave`, as a new tmpfs mount has no master to receive events from.
-- **mount_label, masked and readonly paths**: as in runtime-tools, the test
-  sets no masked or readonly paths. Finding (please review): with
-  `mountLabel` set, youki adds `context=` to the tmpfs masking a directory
-  (e.g. `/proc/acpi` of the default masked paths) even when SELinux is
-  disabled, and the mount fails with `EINVAL`. For other mounts youki ignores
-  the label when `/sys/fs/selinux` does not exist, so this looks like an
-  inconsistency in youki (`masked_paths()` in
-  `crates/libcontainer/src/process/init/process.rs`).
+- **mount_label, masked paths**: with `mountLabel` set, youki used to add
+  `context=` to the tmpfs masking a directory (e.g. `/proc/acpi` of the
+  default masked paths) even when SELinux was disabled, and the mount failed
+  with `EINVAL`, while it ignores the label for other mounts in that case.
+  This was fixed in `masked_paths()` of
+  `crates/libcontainer/src/process/init/process.rs`. `mount_label` sets no
+  masked or readonly paths as in runtime-tools, and
+  `mount_label_with_masked_paths` keeps the default ones to cover the fix.
 - **mount_label, runc**: runc adds `context=` to mounts such as `/dev` even
   when SELinux is disabled and fails to create the container, also with the
   Go test. So the test is skipped for runc unless SELinux is enabled.
