@@ -9,6 +9,27 @@ pub use oci_seccomp::seccomp::SeccompError;
 
 type Result<T> = std::result::Result<T, SeccompError>;
 
+// Debug
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::mem::size_of_val;
+use std::slice;
+use oci_seccomp::instruction::Instruction;
+
+fn dump_filter(path: &str, filter: &[Instruction]) -> std::io::Result<()> {
+    let bytes: &[u8] = unsafe {
+        slice::from_raw_parts(filter.as_ptr() as *const u8, size_of_val(filter))
+    };
+
+    let mut f = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)?;
+    f.write_all(bytes)?;
+    Ok(())
+}
+
 #[tracing::instrument(level = "trace", skip(seccomp))]
 pub fn initialize_seccomp(seccomp: &LinuxSeccomp) -> Result<Option<io::RawFd>> {
     let inst_data = SeccompProgramPlan::try_from(seccomp.clone())?;
@@ -19,6 +40,7 @@ pub fn initialize_seccomp(seccomp: &LinuxSeccomp) -> Result<Option<io::RawFd>> {
         seccomp.set_flags(inst_data.flags.clone());
     }
     seccomp.filters = Vec::try_from(inst_data)?;
+    let _ = dump_filter("/tmp/filter.prog", &seccomp.filters);
     let fd = match seccomp.apply() {
         // TODO: check is_notify()?
         Ok(notify_fd) => Some(notify_fd.into_raw_fd()),

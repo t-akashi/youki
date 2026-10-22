@@ -297,6 +297,11 @@ pub fn initialize_seccomp(seccomp: &LinuxSeccomp) -> Result<Option<io::RawFd>> {
         }
     }
 
+    use std::fs::OpenOptions;
+    use std::os::fd::AsFd;
+    let file = OpenOptions::new().write(true).create(true).truncate(true).open("/tmp/filter_lib.prog").unwrap();
+    let fd = file.as_fd();
+    let _ = ctx.export_bpf(fd);
     // In order to use the SECCOMP_SET_MODE_FILTER operation, either the calling
     // thread must have the CAP_SYS_ADMIN capability in its user namespace, or
     // the thread must already have the no_new_privs bit set.
