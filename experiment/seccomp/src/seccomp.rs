@@ -411,9 +411,17 @@ impl TryFrom<LinuxSeccomp> for SeccompProgramPlan {
                 }
 
                 for name in syscall.names() {
+                    // eprintln!("syscall name: {name:?}");
+                    let syscall_num = match get_syscall_number(&data.arc, name) {
+                        Some(n) => n,
+                        None => {
+                            eprintln!("seccomp: no syscall number for {name:?}");
+                            continue;
+                        }
+                    };
                     data.rule
                         .syscall
-                        .push(get_syscall_number(&data.arc, name).unwrap());
+                        .push(syscall_num);
                     match syscall.args() {
                         Some(args) => {
                             if syscall.args().iter().len() > 6 {
@@ -421,7 +429,7 @@ impl TryFrom<LinuxSeccomp> for SeccompProgramPlan {
                             }
                             data.rule
                                 .check_arg_syscall
-                                .push(get_syscall_number(&data.arc, name).unwrap());
+                                .push(syscall_num);
                             for arg in args {
                                 data.rule.arg_cnt = Option::from(arg.index() as u8);
                                 data.rule.args = Option::from(syscall_args!(arg.value() as usize));
