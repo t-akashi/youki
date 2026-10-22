@@ -14,6 +14,7 @@ keywords = ["youki", "container", "cgroups"]
 [features]
 default = ["systemd", "v2", "v1", "seccomp"]
 seccomp = ["dep:libseccomp"]
+oci_seccomp = ["seccomp", "dep:oci_seccomp"]
 systemd = ["libcgroups/systemd", "v2"]
 v2 = ["libcgroups/v2"]
 v1 = ["libcgroups/v1"]
@@ -30,6 +31,7 @@ procfs = { workspace = true }
 prctl = { workspace = true }
 libcgroups = { path = "../libcgroups", default-features = false, version = "0.7.0" } # MARK: Version
 libseccomp = { workspace = true, optional = true }
+oci_seccomp = { package = "seccomp", path = "../../experiment/seccomp", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 rust-criu = { workspace = true }
