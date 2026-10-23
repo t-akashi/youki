@@ -321,7 +321,8 @@ fn build_syscall_section(rule: &Rule, action: u32) -> Result<Vec<Instruction>, S
         bpf.extend(syscall_to_bpf_chunk(rule, chunk)?);
         if i != last_idx {
             // bpf.push(Instruction::stmt(BPF_JMP | BPF_JA, 1));
-            bpf.push(Instruction::stmt(BPF_RET | BPF_K, action));
+            // TEMP: move this to build_instruction
+            // bpf.push(Instruction::stmt(BPF_RET | BPF_K, action));
         }
     }
     Ok(bpf)
@@ -423,6 +424,7 @@ impl TryFrom<LinuxSeccomp> for SeccompProgramPlan {
                         .syscall
                         .push(syscall_num);
                     match syscall.args() {
+                        Some(args) if args.len() == 0 => {},
                         Some(args) => {
                             if syscall.args().iter().len() > 6 {
                                 return Err(SeccompError::InvalidArgumentSize);
@@ -430,6 +432,7 @@ impl TryFrom<LinuxSeccomp> for SeccompProgramPlan {
                             data.rule
                                 .check_arg_syscall
                                 .push(syscall_num);
+                            /* redundant; remove it from loop
                             for arg in args {
                                 data.rule.arg_cnt = Option::from(arg.index() as u8);
                                 data.rule.args = Option::from(syscall_args!(arg.value() as usize));
@@ -441,9 +444,27 @@ impl TryFrom<LinuxSeccomp> for SeccompProgramPlan {
                                 }
                                 data.rule.op = Option::from(SeccompCompareOp::from(arg.op()))
                             }
+                            */
                         }
                         None => continue,
                     }
+                }
+                match syscall.args() {
+                    Some(args) if args.len() == 0 => {},
+                    Some(args) => {
+                        for arg in args {
+                            data.rule.arg_cnt = Option::from(arg.index() as u8);
+                            data.rule.args = Option::from(syscall_args!(arg.value() as usize));
+                            if arg.value_two().is_some() {
+                                data.rule.args = Option::from(syscall_args!(
+                                    arg.value() as usize,
+                                    arg.value_two().unwrap() as usize
+                                ));
+                            }
+                            data.rule.op = Option::from(SeccompCompareOp::from(arg.op()))
+                        }
+                    }
+                    None => {},
                 }
                 data.rule.syscall.sort();
             }
@@ -520,7 +541,7 @@ impl Rule {
         match rule.op.as_ref().unwrap() {
             SeccompCompareOp::NotEqual => {
                 // if system call number is not match, skip args check jf 4 to default action
-                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 4, *syscall as c_uint));
+                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 4+1, *syscall as c_uint));
                 // upper 32bit check of args
                 bpf_prog.push(Instruction::stmt(
                     BPF_LD | BPF_W | BPF_ABS,
@@ -542,8 +563,8 @@ impl Rule {
                 ));
             }
             SeccompCompareOp::LessThan => {
-                // if system call number is not match, skip args check jf 4 to default action
-                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 5, *syscall as c_uint));
+                // if system call number is not match, skip args check jf 5 to default action
+                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 5+1, *syscall as c_uint));
                 // upper 32bit check of args
                 bpf_prog.push(Instruction::stmt(
                     BPF_LD | BPF_W | BPF_ABS,
@@ -571,7 +592,7 @@ impl Rule {
                 ));
             }
             SeccompCompareOp::LessOrEqual => {
-                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 5, *syscall as c_uint));
+                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 5+1, *syscall as c_uint));
                 // upper 32bit check of args
                 bpf_prog.push(Instruction::stmt(
                     BPF_LD | BPF_W | BPF_ABS,
@@ -600,7 +621,7 @@ impl Rule {
             }
             SeccompCompareOp::Equal => {
                 // if system call number is not match, skip args check jf 4 to default action
-                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 4, *syscall as c_uint));
+                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 4+1, *syscall as c_uint));
                 // upper 32bit check of args
                 bpf_prog.push(Instruction::stmt(
                     BPF_LD | BPF_W | BPF_ABS,
@@ -622,8 +643,8 @@ impl Rule {
                 ));
             }
             SeccompCompareOp::GreaterOrEqual => {
-                // if system call number is not match, skip args check jf 4 to default action
-                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 5, *syscall as c_uint));
+                // if system call number is not match, skip args check jf 5 to default action
+                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 5+1, *syscall as c_uint));
                 // upper 32bit check of args
                 bpf_prog.push(Instruction::stmt(
                     BPF_LD | BPF_W | BPF_ABS,
@@ -651,8 +672,8 @@ impl Rule {
                 ));
             }
             SeccompCompareOp::GreaterThan => {
-                // if system call number is not match, skip args check jf 4 to default action
-                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 5, *syscall as c_uint));
+                // if system call number is not match, skip args check jf 5 to default action
+                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 5+1, *syscall as c_uint));
                 // upper 32bit check of args
                 bpf_prog.push(Instruction::stmt(
                     BPF_LD | BPF_W | BPF_ABS,
@@ -681,7 +702,7 @@ impl Rule {
             }
             SeccompCompareOp::MaskedEqual => {
                 // if system call number is not match, skip args check jf 4 to default action
-                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 4, *syscall as c_uint));
+                bpf_prog.push(Instruction::jump(BPF_JEQ | BPF_K, 0, 4+1, *syscall as c_uint));
 
                 // upper 32bit check of args
                 bpf_prog.push(Instruction::stmt(
@@ -714,15 +735,29 @@ impl Rule {
         syscall: &u64,
     ) -> Result<Vec<Instruction>, SeccompError> {
         let mut bpf_prog = vec![];
-        if rule.arg_cnt.is_some() && rule.check_arg_syscall.contains(syscall) {
-            bpf_prog.extend(Rule::build_instruction_with_args(rule, syscall)?);
-        } else {
+        if jump_num > 1 {
             bpf_prog.push(Instruction::jump(
                 BPF_JEQ | BPF_K,
-                Self::jump_cnt(rule, jump_num),
+                // Self::jump_cnt(rule, jump_num),
+                (jump_num - 1).try_into().unwrap(),
                 0,
                 *syscall as c_uint,
             ));
+        } else {
+            /* last syscall in a chunk */
+            // if rule.arg_cnt.is_some() && rule.check_arg_syscall.contains(syscall) {
+            if rule.arg_cnt.is_some() {
+                bpf_prog.extend(Rule::build_instruction_with_args(rule, syscall)?);
+            } else {
+                bpf_prog.push(Instruction::jump(
+                    BPF_JEQ | BPF_K,
+                    0,
+                    1,
+                    *syscall as c_uint,
+                ));
+            }
+            // moved this here from build_syscall_section()
+            bpf_prog.push(Instruction::stmt(BPF_RET | BPF_K, rule.action));
         }
 
         Ok(bpf_prog)
