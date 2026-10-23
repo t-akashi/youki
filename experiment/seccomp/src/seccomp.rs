@@ -319,10 +319,13 @@ fn build_syscall_section(rule: &Rule, action: u32) -> Result<Vec<Instruction>, S
     let last_idx = chunks.len().saturating_sub(1);
     for (i, chunk) in chunks.iter().enumerate() {
         bpf.extend(syscall_to_bpf_chunk(rule, chunk)?);
-        if i != last_idx {
+        // reload syscall number
+        // TODO: can omit this in some cases
+        if i != last_idx && rule.arg_cnt.is_some() {
             // bpf.push(Instruction::stmt(BPF_JMP | BPF_JA, 1));
             // TEMP: move this to build_instruction
             // bpf.push(Instruction::stmt(BPF_RET | BPF_K, action));
+            bpf.push(Instruction::stmt(BPF_LD | BPF_W | BPF_ABS, seccomp_data_nr_offset() as u32));
         }
     }
     Ok(bpf)
@@ -334,18 +337,31 @@ pub struct SeccompProgramPlan {
     pub def_action: u32,
     pub def_errno_ret: u32,
     pub flags: Vec<c_ulong>,
-    pub rule: Rule,
+    pub rules: Vec<Rule>,
 }
 
 impl TryFrom<SeccompProgramPlan> for Vec<Instruction> {
     type Error = SeccompError;
     fn try_from(inst_data: SeccompProgramPlan) -> Result<Self, SeccompError> {
-        let bpf_prog = build_syscall_section(&inst_data.rule, inst_data.rule.action)?;
+        let mut bpf_prog = vec![];
+        let last_idx = inst_data.rules.len().saturating_sub(1);
+        let mut prev_rule_has_args = false;
+        for (i, rule) in inst_data.rules.iter().enumerate() {
+            let bpf = build_syscall_section(&rule, rule.action)?;
+            bpf_prog.extend(bpf);
+            // reload syscall number
+            // TODO: can omit this in some cases
+            if i != last_idx && prev_rule_has_args {
+                bpf_prog.push(Instruction::stmt(BPF_LD | BPF_W | BPF_ABS, seccomp_data_nr_offset() as u32));
+            }
+            prev_rule_has_args = rule.arg_cnt.is_some();
+        }
 
         let mut all_bpf_prog = gen_validate(&inst_data.arc, inst_data.def_action, bpf_prog.len());
         all_bpf_prog.extend(bpf_prog);
         all_bpf_prog.push(Instruction::stmt(BPF_RET | BPF_K, inst_data.def_action));
-        all_bpf_prog.push(Instruction::stmt(BPF_RET | BPF_K, inst_data.rule.action));
+        // why need?
+        // all_bpf_prog.push(Instruction::stmt(BPF_RET | BPF_K, inst_data.rule.action));
         Ok(all_bpf_prog)
     }
 }
@@ -402,13 +418,15 @@ impl TryFrom<LinuxSeccomp> for SeccompProgramPlan {
          */
         if let Some(syscalls) = seccomp.syscalls() {
             for syscall in syscalls {
-                data.rule.is_notify = data.rule.action == SECCOMP_RET_USER_NOTIF;
+                let mut rule = Rule::default();
+
+                rule.is_notify = rule.action == SECCOMP_RET_USER_NOTIF;
                 if syscall.action().eq(&LinuxSeccompAction::ScmpActErrno) {
                     if let Some(errno_ret) = syscall.errno_ret() {
-                        data.rule.action = syscall.action().as_u32(Option::from(errno_ret));
+                        rule.action = syscall.action().as_u32(Option::from(errno_ret));
                     }
                 } else {
-                    data.rule.action = u32::from(syscall.action());
+                    rule.action = u32::from(syscall.action());
                 }
 
                 for name in syscall.names() {
@@ -420,7 +438,7 @@ impl TryFrom<LinuxSeccomp> for SeccompProgramPlan {
                             continue;
                         }
                     };
-                    data.rule
+                    rule
                         .syscall
                         .push(syscall_num);
                     match syscall.args() {
@@ -429,7 +447,7 @@ impl TryFrom<LinuxSeccomp> for SeccompProgramPlan {
                             if syscall.args().iter().len() > 6 {
                                 return Err(SeccompError::InvalidArgumentSize);
                             }
-                            data.rule
+                            rule
                                 .check_arg_syscall
                                 .push(syscall_num);
                             /* redundant; remove it from loop
@@ -453,20 +471,22 @@ impl TryFrom<LinuxSeccomp> for SeccompProgramPlan {
                     Some(args) if args.len() == 0 => {},
                     Some(args) => {
                         for arg in args {
-                            data.rule.arg_cnt = Option::from(arg.index() as u8);
-                            data.rule.args = Option::from(syscall_args!(arg.value() as usize));
+                            rule.arg_cnt = Option::from(arg.index() as u8);
+                            rule.args = Option::from(syscall_args!(arg.value() as usize));
                             if arg.value_two().is_some() {
-                                data.rule.args = Option::from(syscall_args!(
+                                rule.args = Option::from(syscall_args!(
                                     arg.value() as usize,
                                     arg.value_two().unwrap() as usize
                                 ));
                             }
+                            eprintln!("   op: {:?}", SeccompCompareOp::from(arg.op()));
                             data.rule.op = Option::from(SeccompCompareOp::from(arg.op()))
                         }
                     }
                     None => {},
                 }
-                data.rule.syscall.sort();
+                rule.syscall.sort();
+                data.rules.push(rule);
             }
         }
         Ok(data)
