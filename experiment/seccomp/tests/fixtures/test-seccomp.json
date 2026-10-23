@@ -1,0 +1,10 @@
+{
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "syscalls": [
+    { "names": ["mkdir", "mkdirat"], "action": "SCMP_ACT_ERRNO", "errnoRet": 99 },
+    { "names": ["chmod", "fchmodat", "fchmodat2"], "action": "SCMP_ACT_KILL_PROCESS" },
+    { "names": ["socket"], "action": "SCMP_ACT_ERRNO", "errnoRet": 97,
+      "args": [{ "index": 0, "value": 10, "op": "SCMP_CMP_EQ" }] },
+    { "names": ["uname"], "action": "SCMP_ACT_LOG" }
+  ]
+}

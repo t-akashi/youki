@@ -10,7 +10,8 @@ mod utils;
 #[test]
 fn read_json() -> anyhow::Result<()> {
     let mut cnt = 0;
-    let seccomp = utils::read_seccomp_testdata("tests/fixtures/default_x86_64.json".as_ref())?;
+    // let seccomp = utils::read_seccomp_testdata("tests/fixtures/default_x86_64.json".as_ref())?;
+    let seccomp = utils::read_seccomp_testdata("tests/fixtures/podman.json".as_ref())?;
 
     if let Some(seccomp_syscalls) = seccomp.syscalls() {
         for linux_syscall in seccomp_syscalls {
@@ -24,7 +25,13 @@ fn read_json() -> anyhow::Result<()> {
             let mut has_args: bool = false;
             for syscall in linux_syscall.names().iter() {
                 let scmp_syscall = ScmpSyscall::from_name(syscall)?;
+                eprintln!("{cnt}: syscall: {syscall:?}, {scmp_syscall:?}");
                 if let Some(args) = linux_syscall.args() {
+                    // eprintln!("args: {args:?}");
+                    if args.len() == 0 {
+                        filter.add_rule(action, scmp_syscall)?;
+                        continue;
+                    }
                     has_args = true;
                     if args[0].op() == LinuxSeccompOperator::ScmpCmpMaskedEq {
                         let cmp = ScmpArgCompare::new(
