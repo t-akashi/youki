@@ -47,7 +47,8 @@ impl Seccomp {
     pub fn new() -> Self {
         Seccomp {
             filters: Vec::new(),
-            flags: SECCOMP_FILTER_FLAG_NEW_LISTENER,
+            // flags: SECCOMP_FILTER_FLAG_NEW_LISTENER,
+            flags: 0,
         }
     }
 
@@ -97,8 +98,10 @@ impl FromRawFd for NotifyFd {
 
 impl IntoRawFd for NotifyFd {
     fn into_raw_fd(self) -> RawFd {
-        let NotifyFd { fd } = self;
-        fd
+        // let NotifyFd { fd } = self;
+        // fd
+        let this = std::mem::ManuallyDrop::new(self); // skip Drop (no close)
+        this.fd
     }
 }
 

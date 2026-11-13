@@ -371,10 +371,12 @@ pub fn container_init_process(
                 tracing::error!(?err, "failed to initialize seccomp");
                 err
             })?;
-            sync_seccomp(notify_fd, main_sender, init_receiver).map_err(|err| {
-                tracing::error!(?err, "failed to sync seccomp");
-                err
-            })?;
+            if seccomp::is_notify(&seccomp) {
+                sync_seccomp(notify_fd, main_sender, init_receiver).map_err(|err| {
+                    tracing::error!(?err, "failed to sync seccomp");
+                    err
+                })?;
+            }
         }
     }
     #[cfg(not(feature = "seccomp"))]
@@ -418,10 +420,12 @@ pub fn container_init_process(
                 tracing::error!(?err, "failed to initialize seccomp");
                 err
             })?;
-            sync_seccomp(notify_fd, main_sender, init_receiver).map_err(|err| {
-                tracing::error!(?err, "failed to sync seccomp");
-                err
-            })?;
+            if seccomp::is_notify(&seccomp) {
+                sync_seccomp(notify_fd, main_sender, init_receiver).map_err(|err| {
+                    tracing::error!(?err, "failed to sync seccomp");
+                    err
+                })?;
+            }
         }
     }
     #[cfg(not(feature = "seccomp"))]

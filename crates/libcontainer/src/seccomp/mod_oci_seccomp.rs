@@ -13,6 +13,8 @@ type Result<T> = std::result::Result<T, SeccompError>;
 pub fn initialize_seccomp(seccomp: &LinuxSeccomp) -> Result<Option<io::RawFd>> {
     let inst_data = SeccompProgramPlan::try_from(seccomp.clone())?;
     let mut seccomp = Seccomp::new();
+    // TODO: Do we need set NEW_LISTERNER flag manually if seccomp::is_notify(seccomp)?
+    eprintln!("init_seccomp, set_flags: {:?}", inst_data.flags);
     if !inst_data.flags.is_empty() {
         seccomp.set_flags(inst_data.flags.clone());
     }
