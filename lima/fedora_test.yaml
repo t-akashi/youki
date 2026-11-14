@@ -1,0 +1,44 @@
+base: template:podman
+
+cpus: 4
+memory: "4GiB"
+disk: "20GiB"
+
+mounts: null
+
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      # install dependencies
+      dnf -y install          \
+        git                   \
+        curl                  \
+        just                  \
+        pkg-config            \
+        systemd-devel         \
+        elfutils-libelf-devel \
+        libseccomp-devel      \
+        clang-devel           \
+        openssl-devel
+
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      # install Rust
+      if [ ! -f ~/.cargo/bin/cargo ]; then
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      fi
+
+      export PATH=~/.cargo/bin:${PATH}
+
+      # clone and build youki
+      if [ ! -d ~/youki ]; then
+        git clone https://github.com/youki-dev/youki.git ~/youki
+      fi
+      cd ~/youki
+      just youki-release
