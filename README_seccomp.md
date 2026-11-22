@@ -1,57 +1,96 @@
-# Build youki
+# Use the OCI compiler with a calculated policy
 
-./scripts/build.sh -o . -r -c youki -f seccomp,oci_seccomp
+Heimdall can continue calculating the OCI policy while this compiler builds
+the static filter. `experiment/seccomp-youki-adapter` demonstrates the swap
+through the existing `SeccompBackend` trait in
+[youki#3873](https://github.com/youki-dev/youki/pull/3873), pinned to commit
+`c14cf83587d71791db706ea5b7c8aa0f4ce152ba`. The adapter changes no trait methods.
+Static and graph filtering remain separate implementations; this example
+demonstrates the static compiler.
 
-# Debug seccomp rules
+```console
+cargo test --manifest-path experiment/seccomp-youki-adapter/Cargo.toml --locked
+cargo run --manifest-path experiment/seccomp-youki-adapter/Cargo.toml --locked -- /path/to/calculated.oci.json
+```
 
-## copy dump file
-podman run  --log-level=debug --runtime youki alpine ls /tmp 2>&1 | tee /tmp/alpine.txt
-podman cp <container>:/tmp/filter.prog /tmp/filter.prog
+The command reads an OCI `LinuxSeccomp` section and compiles it. The test
+swaps the adapter and libseccomp at the same `initialize_seccomp_with` call
+site, checking syscall decisions and notification descriptors in disposable
+children. The example has its own Cargo workspace because this branch's
+libcontainer predates #3873. It needs libseccomp development files for the
+PR's default backend. Compiler diagnostics are preserved in the source of
+the existing `LoadProgram` error variant.
 
-## disable it
-cat /tmp/filter.prog | ../libseccomp/tools/scmp_bpf_disasm -a x86 2>&1 | tee /tmp/filter.txt
+## Build this branch's Youki integration
 
-# Unit test
-scripts/cargo.sh test -p seccomp --test filter_podman -- --test-threads=1 --no-capture
+Build Youki with the backend selected:
 
-# Functional Test
+```console
+cargo build -p youki --no-default-features --features v2,oci_seccomp --locked
+```
 
-## Pre-check
+The backend compiles an OCI `LinuxSeccomp` section into classic BPF. Policy
+creation stays with the caller. It accepts calculated syscall lists and
+argument restrictions in the same format as manually written OCI profiles.
 
-podman create --name sctest --runtime youki --security-opt seccomp=./experiment/seccomp/tests/fixtures/test-seccomp.json alpine true
-podman container init sctest
-jq '.linux.seccomp' "$(podman inspect --format '{{.OCIConfigPath}}' sctest)"
-podman inspect sctest | grep OCIRuntime
+Run the compiler and installation tests from the repository root:
 
-### Run the following commands:
+```console
+cargo test -p seccomp --locked
+cargo test -p libcontainer --no-default-features --features v2,oci_seccomp --locked --test oci_seccomp_install
+```
 
-(1)
-youki % podman run --rm --runtime youki --security-opt seccomp=./experiment/seccomp/tests/fixtures/test-seccomp.json alpine grep Seccomp /proc/self/status
-Seccomp:        2
-Seccomp_filters:        1
+The compiler tests exercise all seven unsigned 64-bit comparisons, both
+supported architectures, multiple conditions, rule fall-through, long jumps,
+and libseccomp decision comparisons. Kernel tests run only in disposable
+subprocesses, with a timeout for notification failures. They require Linux
+with seccomp notification support; listener + TSYNC requires Linux 5.7 or later.
+The caller still controls `no_new_privs`, as on Youki's libseccomp path.
 
-(2)
-youki % podman run --rm --runtime youki --security-opt seccomp=./experiment/seccomp/tests/fixtures/test-seccomp.json alpine mkdir /tmp/x
-mkdir: can't create directory '/tmp/x': Address not available
+## Current scope and gaps
 
-youki % podman run --rm --runtime youki --security-opt seccomp=./experiment/seccomp/tests/fixtures/test-seccomp.json alpine chmod 600 /etc/hostname; echo "exit=$?"
-exit=159
+- One x86_64 or aarch64 ABI per program. An omitted architecture means native;
+  installation rejects a foreign-only profile. Other ABIs and multi-ABI
+  profiles are explicitly rejected until dispatch and syscall translation
+  are implemented.
+- All conditions on distinct argument indexes must hold. Repeated indexes
+  follow libcontainer/runc's convention: add each condition as a separate
+  rule. Masked equality is `(argument & value) == valueTwo` on all 64 bits.
+  An expected value with bits outside the mask therefore never matches;
+  this differs from libseccomp's normalization of such values.
+- Rules whose action equals the default are omitted, matching libcontainer.
+  Multiple nondefault actions for one syscall are rejected; reproducing
+  libseccomp's rule-merging/precedence behavior remains work to do.
+- Syscall names absent from the selected architecture's table are reported
+  and skipped. Table completeness and future kernel additions need review.
+- The input is the final OCI section, not a raw Docker/Podman source profile
+  containing capability-dependent `includes`/`excludes` and `archMap` fields.
+  Those must be resolved by the container frontend first.
+- `Seccomp::apply` returns `None` for ordinary installation and `Some(fd)`
+  only for a new notification listener. The experimental `Rule` type now
+  retains a vector of OCI argument conditions instead of one condition.
+- This branch's Youki binary selects the compiler through `oci_seccomp`.
+  The separate adapter example exercises the proposed #3873 interface.
+- Heimdall's compiler automatically allows its four base calls
+  (`restart_syscall`, `rt_sigreturn`, `exit`, `exit_group`). This compiler
+  follows the supplied OCI policy, so a calculated profile must include
+  those rules if that behavior is intended. Heimdall's x86_64 wasm-host
+  profile already includes all four. This compiler returns ENOSYS for x32
+  syscall numbers on x86_64; Heimdall's compiler kills the process.
 
-(3)
-youki % podman run --rm --runtime youki --security-opt seccomp=./experiment/seccomp/tests/fixtures/test-seccomp.json alpine sh -c 'ping -6 -c1 ::1; echo "v6=$?"; ping -4 -c1 127.0.0.1; echo "v4=$?"'
-PING ::1 (::1): 56 data bytes
-64 bytes from ::1: seq=0 ttl=64 time=0.050 ms
+## Manual container check
 
---- ::1 ping statistics ---
-1 packets transmitted, 1 packets received, 0% packet loss
-round-trip min/avg/max = 0.050/0.050/0.050 ms
-v6=0
-PING 127.0.0.1 (127.0.0.1): 56 data bytes
-ping: can't create raw socket: Address family not supported by protocol
-v4=1
+With the built binary registered as Podman's `youki` runtime, the existing
+`experiment/seccomp/tests/fixtures/test-seccomp.json` should:
 
-(4)
-youki % podman run --rm --runtime youki --security-opt seccomp=./experiment/seccomp/tests/fixtures/test-seccomp.json alpine uname -a
-Linux 192511330eed 7.0.0-38-generic #38-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep  4 09:10:14 UTC 2026 x86_64 Linux
-youki % journalctl -k --since -1min | grep -E 'type=1326|SECCOMP'
-11月 13 14:34:52 octopus kernel: audit: type=1326 audit(1794548092.803:6314): auid=1000 uid=1000 gid=1000 ses=3 subj=podman pid=2531007 comm="uname" exe="/bin/busybox" sig=0 arch=c000003e syscall=63 compat=0 ip=0x7de90c802e29 code=0x7ffc0000
+- return errno 99 for `mkdir`/`mkdirat`;
+- kill the process for `chmod` variants;
+- return errno 97 for `socket(AF_INET6, ...)` (argument 0 equals 10), while
+  other socket domains retain the ALLOW default;
+- run and log `uname`, subject to the host's seccomp audit configuration.
+
+```console
+podman run --rm --runtime youki --security-opt seccomp=./experiment/seccomp/tests/fixtures/test-seccomp.json alpine mkdir /tmp/x
+```
+
+The backend no longer writes an unconditional `/tmp/filter.prog` debug file.
