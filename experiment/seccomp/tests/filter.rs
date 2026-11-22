@@ -1,158 +1,139 @@
-use std::io::{IoSlice, IoSliceMut};
-use std::os::fd::{IntoRawFd, OwnedFd};
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::slice;
+use std::os::fd::AsRawFd;
+use std::process::Command;
+use std::sync::{Arc, Barrier, mpsc};
 
-use anyhow::Result;
-use nix::sys::signal::Signal;
-use nix::sys::socket::{
-    self, ControlMessage, ControlMessageOwned, MsgFlags, SockFlag, SockType, UnixAddr,
-};
-use nix::sys::stat::Mode;
-use nix::sys::wait::{self, WaitStatus};
-use nix::unistd::{close, mkdir};
-use oci_spec::runtime::{
-    Arch as OciSpecArch, LinuxSeccompAction, LinuxSeccompBuilder, LinuxSyscallBuilder,
-};
-use seccomp::seccomp::{NotifyFd, Seccomp, SeccompProgramPlan};
-use syscall_numbers::x86_64;
+use nix::libc;
+use seccomp::instruction::*;
+use seccomp::seccomp::{NotifyFd, Seccomp, SeccompError, SeccompProgramPlan};
+use serde_json::json;
 
-fn send_fd<F: AsRawFd>(sock: OwnedFd, fd: &F) -> nix::Result<()> {
-    let fd = fd.as_raw_fd();
-    let cmsgs = [ControlMessage::ScmRights(slice::from_ref(&fd))];
-
-    let iov = [IoSlice::new(b"x")];
-
-    socket::sendmsg::<()>(sock.into_raw_fd(), &iov, &cmsgs, MsgFlags::empty(), None)?;
-    Ok(())
+fn filter(value: serde_json::Value) -> Seccomp {
+    let spec: oci_spec::runtime::LinuxSeccomp = serde_json::from_value(value).unwrap();
+    let plan = SeccompProgramPlan::try_from(spec).unwrap();
+    let mut filter = Seccomp::new();
+    filter.set_flags(plan.flags.clone());
+    filter.filters = plan.try_into().unwrap();
+    filter
 }
 
-fn recv_fd<F: FromRawFd>(sock: RawFd) -> nix::Result<Option<F>> {
-    let mut iov_buf = [];
-    let mut iov = [IoSliceMut::new(&mut iov_buf)];
-
-    let mut cmsg_buf = nix::cmsg_space!(RawFd);
-    let msg = socket::recvmsg::<UnixAddr>(sock, &mut iov, Some(&mut cmsg_buf), MsgFlags::empty())?;
-    match msg.cmsgs()?.next() {
-        Some(ControlMessageOwned::ScmRights(fds)) if !fds.is_empty() => {
-            let fd = unsafe { F::from_raw_fd(fds[0]) };
-            Ok(Some(fd))
-        }
-        _ => Ok(None),
+fn worker(mode: &str) {
+    // Every filter is installed in a subprocess. A broken notification path
+    // must fail the test instead of waiting forever.
+    unsafe {
+        libc::alarm(10);
     }
-}
-
-async fn handle_notifications(notify_fd: NotifyFd) -> nix::Result<()> {
-    loop {
-        println!("Waiting on next");
-        let req = notify_fd.recv()?.notif;
-        let syscall_name = x86_64::sys_call_name(req.data.nr.into());
-        println!(
-            "Got notification: id={}, pid={}, nr={:?}",
-            req.id, req.pid, syscall_name
-        );
-
-        notify_fd.success(0, req.id)?;
-    }
-}
-
-async fn handle_signal(pid: nix::unistd::Pid) -> Result<()> {
-    let status = wait::waitpid(pid, None)?;
-    match status {
-        WaitStatus::Signaled(_, signal, _) => {
-            if signal == Signal::SIGSYS {
-                println!("Got SIGSYS, seccomp filter applied successfully!");
-                return Ok(());
+    prctl::set_no_new_privileges(true).unwrap();
+    match mode {
+        "plain" | "wait-without-listener" => {
+            let input = std::fs::File::open("/dev/null").unwrap();
+            assert_eq!(unsafe { libc::dup2(input.as_raw_fd(), 0) }, 0);
+            let mut f = filter(json!({"defaultAction":"SCMP_ACT_ALLOW", "syscalls":[{
+                "names":["getpid"],"action":"SCMP_ACT_ERRNO","errnoRet":99,
+                "args":[{"index":0,"op":"SCMP_CMP_EQ","value":8}]
+            }]}));
+            if mode == "wait-without-listener" {
+                f.flags |= libc::SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV;
             }
-            dbg!(signal);
-            Ok(())
+            assert!(f.apply().unwrap().is_none());
+            assert_ne!(
+                unsafe { libc::fcntl(0, libc::F_GETFD) },
+                -1,
+                "stdin was closed"
+            );
+            assert_eq!(unsafe { libc::syscall(libc::SYS_getpid, 8u64) }, -1);
+            assert_eq!(std::io::Error::last_os_error().raw_os_error(), Some(99));
+            assert!(unsafe { libc::syscall(libc::SYS_getpid, 7u64) } > 0);
         }
-        wait_status => {
-            dbg!("Unexpected wait status: {:?}", wait_status);
-            Err(anyhow::anyhow!("Unexpected wait status: {:?}", wait_status))
+        "notify" => {
+            let (sender, receiver) = mpsc::channel::<NotifyFd>();
+            // Started before the caller is filtered, so the supervisor is not filtered.
+            let supervisor = std::thread::spawn(move || {
+                let fd = receiver.recv().unwrap();
+                let request = fd.recv().unwrap().notif;
+                assert_eq!(request.data.nr, libc::SYS_getpid as i32);
+                fd.success(4242, request.id).unwrap();
+            });
+            let f = filter(json!({"defaultAction":"SCMP_ACT_ALLOW", "syscalls":[{
+                "names":["getpid"],"action":"SCMP_ACT_NOTIFY"
+            }]}));
+            sender
+                .send(f.apply().unwrap().expect("listener fd"))
+                .unwrap();
+            assert_eq!(unsafe { libc::syscall(libc::SYS_getpid) }, 4242);
+            supervisor.join().unwrap();
         }
+        "notify-tsync" => {
+            let mut f = filter(json!({"defaultAction":"SCMP_ACT_ALLOW", "syscalls":[{
+                "names":["getpid"],"action":"SCMP_ACT_NOTIFY"
+            }]}));
+            f.flags |= libc::SECCOMP_FILTER_FLAG_TSYNC;
+            let fd = f.apply().unwrap().expect("listener fd");
+            // No call needing a response after this install. Verify the fd is real.
+            assert_ne!(unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) }, -1);
+            drop(fd);
+        }
+        "tsync-failure" => {
+            let ready = Arc::new(Barrier::new(2));
+            let finish = Arc::new(Barrier::new(2));
+            let (r, f) = (ready.clone(), finish.clone());
+            let divergent = std::thread::spawn(move || {
+                let own = filter(json!({"defaultAction":"SCMP_ACT_ALLOW"}));
+                assert!(own.apply().unwrap().is_none());
+                r.wait();
+                f.wait();
+            });
+            ready.wait();
+            let mut f = filter(json!({"defaultAction":"SCMP_ACT_ALLOW"}));
+            f.flags |= libc::SECCOMP_FILTER_FLAG_TSYNC;
+            let result = f.apply();
+            finish.wait();
+            divergent.join().unwrap();
+            assert!(matches!(result,Err(SeccompError::ThreadSync(tid)) if tid>0));
+        }
+        _ => unreachable!(),
+    }
+    unsafe {
+        libc::_exit(0);
     }
 }
 
-#[tokio::main]
 #[test]
-async fn filter() -> Result<()> {
-    let (sock_for_child, sock_for_parent) = socket::socketpair(
-        socket::AddressFamily::Unix,
-        SockType::Stream,
-        None,
-        SockFlag::empty(),
-    )?;
-
-    let _ = prctl::set_no_new_privileges(true);
-
-    let getcwd = LinuxSyscallBuilder::default()
-        .names(vec!["getcwd".to_string()])
-        .build()?;
-    let write = LinuxSyscallBuilder::default()
-        .names(vec!["write".to_string()])
-        .build()?;
-    let syscall_mkdir = LinuxSyscallBuilder::default()
-        .names(vec!["mkdir".to_string()])
-        .action(LinuxSeccompAction::ScmpActNotify)
-        .build()?;
-
-    let spec_seccomp = LinuxSeccompBuilder::default()
-        .architectures(vec![OciSpecArch::ScmpArchX86_64])
-        .default_action(LinuxSeccompAction::ScmpActErrno)
-        .default_errno_ret(1u32)
-        .syscalls(vec![getcwd, write, syscall_mkdir])
-        .build()?;
-
-    let inst_data = SeccompProgramPlan::try_from(spec_seccomp)?;
-    let mut seccomp = Seccomp::new();
-    if !inst_data.flags.is_empty() {
-        seccomp.set_flags(inst_data.flags.clone());
+fn filter_installation_and_notifications() {
+    if let Ok(mode) = std::env::var("YOUKI_SECCOMP_TEST_WORKER") {
+        worker(&mode);
     }
-    seccomp.filters = Vec::try_from(inst_data)?;
-    tokio::spawn(async move {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to listen for event");
-        println!("Received ctrl-c event. Bye");
-        std::process::exit(0);
-    });
-
-    match unsafe { nix::unistd::fork()? } {
-        nix::unistd::ForkResult::Child => {
-            std::panic::catch_unwind(|| {
-                let notify_fd = seccomp.apply().unwrap();
-                println!(
-                    "Seccomp applied successfully with notify fd: {:?}",
-                    notify_fd
-                );
-                send_fd(sock_for_child, &notify_fd).unwrap();
-
-                if let Err(e) = mkdir("/tmp/test", Mode::S_IRUSR | Mode::S_IWUSR) {
-                    eprintln!("Failed to mkdir: {}", e);
-                } else {
-                    println!("mkdir succeeded");
-                }
-
-                eprintln!("stderr should be banned by seccomp");
-            })
+    for mode in [
+        "plain",
+        "wait-without-listener",
+        "notify",
+        "notify-tsync",
+        "tsync-failure",
+    ] {
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "filter_installation_and_notifications",
+                "--nocapture",
+            ])
+            .env("YOUKI_SECCOMP_TEST_WORKER", mode)
+            .output()
             .unwrap();
+        assert!(
+            output.status.success(),
+            "{mode}: {}\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
 
-            std::process::exit(0);
-        }
-        nix::unistd::ForkResult::Parent { child } => {
-            let notify_fd = recv_fd::<NotifyFd>(sock_for_parent.as_raw_fd())?.unwrap();
-
-            close(sock_for_child.as_raw_fd())?;
-            close(sock_for_parent.as_raw_fd())?;
-
-            tokio::spawn(async move {
-                handle_signal(child).await.unwrap();
-            });
-
-            handle_notifications(notify_fd).await?;
-        }
-    };
-
-    Ok(())
+#[test]
+fn invalid_program_lengths_are_rejected_before_the_syscall() {
+    for len in [0, 4097, 65537] {
+        let f = Seccomp {
+            filters: vec![Instruction::stmt(BPF_RET | BPF_K, SECCOMP_RET_ALLOW); len],
+            flags: 0,
+        };
+        assert!(matches!(f.apply(),Err(SeccompError::InvalidProgramSize(n)) if n==len));
+    }
 }

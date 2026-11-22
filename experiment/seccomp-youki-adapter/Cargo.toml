@@ -1,0 +1,17 @@
+[package]
+name = "oci-seccomp-youki-adapter"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+# Keep the demonstration against PR #3873 separate from this branch's
+# libcontainer. Both use the same OCI types; no change to the trait is needed.
+[workspace]
+
+[dependencies]
+compiler = { package = "seccomp", path = "../seccomp" }
+libcontainer = { git = "https://github.com/Ignalina/youki", rev = "c14cf83587d71791db706ea5b7c8aa0f4ce152ba", default-features = false, features = ["v2", "libseccomp"] }
+oci-spec = { version = "0.10.0", features = ["runtime"] }
+serde_json = "1"
+libc = "0.2"
